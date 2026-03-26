@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "Stores user information and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "flashcards": {
+      "title": "Flashcard",
+      "description": "Vocabulary items for learning.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "word": { "type": "string" },
+        "phonetic": { "type": "string" },
+        "meaning": { "type": "string" },
+        "wordFamily": { "type": "string" },
+        "example": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "word", "meaning"]
+    },
+    "grammarBlogs": {
+      "title": "Grammar Blog",
+      "description": "English grammar topics formatted as blog posts.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profile documents."
+    },
+    "/flashcards/{cardId}": {
+      "schema": "flashcards",
+      "description": "Flashcards for vocabulary learning."
+    },
+    "/grammarBlogs/{blogId}": {
+      "schema": "grammarBlogs",
+      "description": "Grammar blog posts."
+    }
+  }
+}
