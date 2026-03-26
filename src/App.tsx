@@ -240,23 +240,28 @@ export default function App() {
     setIsAnalyzing(true);
     try {
       const result = await analyzeInput(inputText, user.uid);
+      if (!result || !result.data) {
+        throw new Error("AI không thể phân tích nội dung này. Vui lòng thử lại với nội dung rõ ràng hơn.");
+      }
+      
       if (result.type === 'vocabulary') {
         const cards = result.data as Flashcard[];
+        if (cards.length === 0) throw new Error("Không tìm thấy từ vựng nào.");
         for (const card of cards) {
           await addDoc(collection(db, 'flashcards'), card);
         }
-        toast.success(`Đã thêm ${cards.length} từ vựng mới!`);
+        toast.success(`Thành công! Đã thêm ${cards.length} thẻ từ vựng.`);
         setActiveTab('vocabulary');
       } else {
         const blog = result.data as GrammarBlog;
         await addDoc(collection(db, 'grammarBlogs'), blog);
-        toast.success('Đã tạo blog ngữ pháp mới!');
+        toast.success('Thành công! Đã tạo bài học ngữ pháp mới.');
         setActiveTab('grammar');
       }
       setInputText('');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error('Lỗi phân tích nội dung. Vui lòng thử lại.');
+      toast.error(e.message || 'Lỗi phân tích nội dung. Vui lòng thử lại.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -583,14 +588,18 @@ export default function App() {
         .rotate-y-180 { transform: rotateY(180deg); }
         .rotate-y-0 { transform: rotateY(0deg); }
         
-        .prose h1 { font-size: 1.875rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; }
-        .prose h2 { font-size: 1.5rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; }
-        .prose h3 { font-size: 1.25rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.5rem; }
-        .prose p { margin-bottom: 1rem; color: #4b5563; line-height: 1.625; }
-        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+        .prose h1 { font-size: 1.875rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; color: #111827; }
+        .prose h2 { font-size: 1.5rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1f2937; }
+        .prose h3 { font-size: 1.25rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.5rem; color: #374151; }
+        .prose p { margin-bottom: 1rem; color: #4b5563; line-height: 1.75; }
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; color: #4b5563; }
         .prose li { margin-bottom: 0.5rem; }
-        .prose code { background-color: #f3f4f6; padding: 0.2rem 0.4rem; rounded: 0.25rem; font-size: 0.875em; }
-        .prose blockquote { border-left: 4px solid #6366f1; padding-left: 1rem; font-style: italic; color: #4f46e5; margin: 1.5rem 0; }
+        .prose code { background-color: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.875em; color: #ef4444; font-family: monospace; }
+        .prose blockquote { border-left: 4px solid #6366f1; padding-left: 1rem; font-style: italic; color: #4f46e5; margin: 1.5rem 0; background-color: #f5f3ff; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+        .prose strong { color: #111827; font-weight: 600; }
+        .prose table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+        .prose th, .prose td { border: 1px solid #e5e7eb; padding: 0.75rem; text-align: left; }
+        .prose th { background-color: #f9fafb; font-weight: 600; }
       `}</style>
     </div>
   );
