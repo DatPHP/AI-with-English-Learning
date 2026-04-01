@@ -41,13 +41,18 @@ import {
   Search,
   Sparkles,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon,
+  Upload,
+  X,
+  File as FileIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Toaster, toast } from 'sonner';
-import { analyzeInput } from './lib/gemini';
+import { analyzeInput, analyzeDocument } from './lib/gemini';
 import { Flashcard, GrammarBlog, UserProfile } from './types';
+import mammoth from 'mammoth';
 
 // --- Error Handling ---
 enum OperationType {
@@ -58,6 +63,9 @@ enum OperationType {
   GET = 'get',
   WRITE = 'write',
 }
+
+const ADMIN_EMAIL = 'admin@gmail.com';
+const OWNER_EMAIL = 'nguyenvandat170296@gmail.com';
 
 function handleFirestoreError(error: any, operationType: OperationType, path: string | null) {
   const errInfo = {
@@ -71,7 +79,12 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  toast.error(`Lỗi: ${errInfo.error}`);
+  
+  if (errInfo.error.includes('insufficient permissions')) {
+    toast.error('Bạn không có quyền thực hiện hành động này.');
+  } else {
+    toast.error(`Lỗi hệ thống: ${errInfo.error}`);
+  }
 }
 
 // --- Components ---
@@ -121,6 +134,8 @@ export default function App() {
 
   // App State
   const [inputText, setInputText] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [grammarBlogs, setGrammarBlogs] = useState<GrammarBlog[]>([]);
@@ -136,11 +151,11 @@ export default function App() {
       setUser(u);
       if (u) {
         // Hardcoded Admin Check
-        if (u.email === 'admin@gmail.com') {
+        if (u.email === ADMIN_EMAIL || u.email === OWNER_EMAIL) {
           setProfile({
             uid: u.uid,
-            name: 'System Admin',
-            email: u.email,
+            name: u.displayName || 'System Admin',
+            email: u.email!,
             role: 'admin',
             createdAt: new Date().toISOString()
           });
@@ -204,7 +219,7 @@ export default function App() {
           await signInWithEmailAndPassword(auth, email, password);
         } catch (err: any) {
           // Special handling for admin account: auto-create if it doesn't exist
-          if (email === 'admin@gmail.com' && password === 'admin12345' && (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential')) {
+          if (email === ADMIN_EMAIL && password === 'admin12345' && (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential')) {
             await createUserWithEmailAndPassword(auth, email, password);
             toast.success('Đã khởi tạo tài khoản Admin hệ thống!');
           } else {
@@ -218,7 +233,7 @@ export default function App() {
           uid: cred.user.uid,
           name,
           email,
-          role: email === 'admin@gmail.com' ? 'admin' : 'user',
+          role: (email === ADMIN_EMAIL || email === OWNER_EMAIL) ? 'admin' : 'user',
           createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, 'users', cred.user.uid), newProfile);
@@ -236,10 +251,28 @@ export default function App() {
   };
 
   const handleInputSubmit = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !selectedFile) return;
     setIsAnalyzing(true);
     try {
-      const result = await analyzeInput(inputText, user.uid);
+      let result;
+      if (selectedFile) {
+        const mimeType = selectedFile.type;
+        
+        if (mimeType.includes('image') || mimeType === 'application/pdf') {
+          const base64 = await fileToBase64(selectedFile);
+          result = await analyzeDocument({ data: base64, mimeType }, user.uid);
+        } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || mimeType === 'application/msword') {
+          // Word file
+          const arrayBuffer = await selectedFile.arrayBuffer();
+          const wordResult = await mammoth.extractRawText({ arrayBuffer });
+          result = await analyzeDocument(wordResult.value, user.uid);
+        } else {
+          throw new Error("Định dạng file không được hỗ trợ. Vui lòng chọn ảnh, PDF hoặc Word.");
+        }
+      } else {
+        result = await analyzeInput(inputText, user.uid);
+      }
+
       if (!result || !result.data) {
         throw new Error("AI không thể phân tích nội dung này. Vui lòng thử lại với nội dung rõ ràng hơn.");
       }
@@ -259,11 +292,46 @@ export default function App() {
         setActiveTab('grammar');
       }
       setInputText('');
+      setSelectedFile(null);
+      setFilePreview(null);
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || 'Lỗi phân tích nội dung. Vui lòng thử lại.');
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64String = (reader.result as string).split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("Kích thước file không được vượt quá 10MB");
+        return;
+      }
+      setSelectedFile(file);
+      if (file.type.includes('image')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setFilePreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setFilePreview(null);
+      }
+      setInputText(''); // Clear text if file is selected
     }
   };
 
@@ -404,19 +472,85 @@ export default function App() {
                   <h2 className="text-lg font-bold text-gray-900">Nhập liệu nội dung học tập</h2>
                 </div>
                 <p className="text-sm text-gray-500 mb-4">
-                  Dán danh sách từ vựng hoặc nội dung ngữ pháp vào đây. AI sẽ tự động phân loại và xử lý cho bạn.
+                  Dán danh sách từ vựng, nội dung ngữ pháp hoặc tải lên hình ảnh, file PDF/Word chứa kiến thức. AI sẽ tự động phân loại, tìm kiếm thêm thông tin và xử lý cho bạn.
                 </p>
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Ví dụ: 1. Civilian / 28 : [ n, adj ] / sə'vɪliən / = A person who is not a member of the armed forces..."
-                  className="w-full h-64 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none mb-4 font-mono text-sm"
-                  maxLength={5000}
-                />
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-400">{inputText.length}/5000 từ</span>
-                  <Button onClick={handleInputSubmit} loading={isAnalyzing} disabled={!inputText.trim()}>
-                    Phân tích với AI
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <FileText className="w-4 h-4" /> Nhập văn bản
+                    </label>
+                    <textarea
+                      value={inputText}
+                      onChange={(e) => {
+                        setInputText(e.target.value);
+                        if (e.target.value) {
+                          setSelectedFile(null);
+                          setFilePreview(null);
+                        }
+                      }}
+                      placeholder="Ví dụ: 1. Civilian / 28 : [ n, adj ] / sə'vɪliən / = A person who is not a member of the armed forces..."
+                      className="w-full h-48 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none font-mono text-sm"
+                      maxLength={5000}
+                      disabled={!!selectedFile}
+                    />
+                    <div className="flex justify-end">
+                      <span className="text-[10px] text-gray-400">{inputText.length}/5000 từ</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4" /> Tải lên tài liệu/hình ảnh
+                    </label>
+                    <div 
+                      className={`relative h-48 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center p-4 ${selectedFile ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 bg-gray-50'}`}
+                    >
+                      {selectedFile ? (
+                        <div className="relative w-full h-full flex flex-col items-center justify-center">
+                          {filePreview ? (
+                            <img src={filePreview} alt="Preview" className="w-full h-32 object-contain rounded-lg mb-2" />
+                          ) : (
+                            <FileIcon className="w-16 h-16 text-indigo-400 mb-2" />
+                          )}
+                          <p className="text-xs font-medium text-indigo-900 truncate max-w-full px-4">{selectedFile.name}</p>
+                          <p className="text-[10px] text-indigo-400">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                          <button 
+                            onClick={() => {
+                              setSelectedFile(null);
+                              setFilePreview(null);
+                            }}
+                            className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                          <p className="text-xs text-gray-500 text-center">Kéo thả hoặc click để chọn file</p>
+                          <p className="text-[10px] text-gray-400 mt-1">Ảnh, PDF, Word (Tối đa 10MB)</p>
+                          <input 
+                            type="file" 
+                            accept="image/*,.pdf,.doc,.docx" 
+                            onChange={handleFileChange}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                        </>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-400 italic">* AI sẽ quét văn bản trong file và tìm kiếm thông tin bổ sung trên Google.</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-center">
+                  <Button 
+                    onClick={handleInputSubmit} 
+                    loading={isAnalyzing} 
+                    disabled={(!inputText.trim() && !selectedFile) || isAnalyzing}
+                    className="w-full md:w-auto md:px-12 py-3 text-lg"
+                  >
+                    {isAnalyzing ? 'Đang phân tích & tìm kiếm...' : 'Bắt đầu phân tích với AI'}
                   </Button>
                 </div>
               </motion.div>

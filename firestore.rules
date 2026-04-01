@@ -24,7 +24,7 @@ service cloud.firestore {
 
     // User profiles
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || isAdmin();
     }
@@ -33,14 +33,14 @@ service cloud.firestore {
     match /flashcards/{cardId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isDocOwner() || isAdmin();
+      allow update, delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
     }
 
     // Grammar Blogs
     match /grammarBlogs/{blogId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isDocOwner() || isAdmin();
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
     }
   }
 }
