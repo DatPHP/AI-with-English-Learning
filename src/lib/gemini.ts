@@ -15,8 +15,16 @@ export async function analyzeInput(text: string, userId: string) {
     - If information is missing, use your knowledge to fill it in.
     
     If it's grammar:
-    - Format it as a structured blog post with a title, category, and markdown content.
-    - Improve the content to be more educational and clear.
+    - Format it as a structured, professional educational blog post.
+    - Use a clear hierarchy: Title, Category, and Content.
+    - Content MUST use Markdown with:
+        - Numbered headers (1., 1.1., 1.1.1.) for logical sections.
+        - Bullet points for lists.
+        - Bold text for key terms.
+        - Blockquotes (>) for examples, with "Ví dụ:" and explanations.
+        - Tables for comparisons if applicable.
+    - The content should be comprehensive, accurate, and easy to follow, similar to a high-quality textbook.
+    - Use Google Search to ensure the rules and examples are up-to-date and accurate.
     
     Input text:
     ${text}
@@ -96,8 +104,16 @@ export async function analyzeDocument(content: string | { data: string, mimeType
     - For each word, provide: word, phonetic, Vietnamese meaning, word family (họ hàng từ), and an example sentence.
     
     If it's grammar:
-    - Format it as a structured blog post with a title, category, and markdown content.
-    - Include detailed explanations, usage notes, and multiple examples found from your search.
+    - Format it as a structured, professional educational blog post.
+    - Use a clear hierarchy: Title, Category, and Content.
+    - Content MUST use Markdown with:
+        - Numbered headers (1., 1.1., 1.1.1.) for logical sections.
+        - Bullet points for lists.
+        - Bold text for key terms.
+        - Blockquotes (>) for examples, with "Ví dụ:" and explanations.
+        - Tables for comparisons if applicable.
+    - The content should be comprehensive, accurate, and easy to follow, similar to a high-quality textbook.
+    - Use Google Search to ensure the rules and examples are up-to-date and accurate.
     
     Content:
     ${content}
@@ -121,8 +137,16 @@ export async function analyzeDocument(content: string | { data: string, mimeType
       - For each word, provide: word, phonetic, Vietnamese meaning, word family (họ hàng từ), and an example sentence.
       
       If it's grammar:
-      - Format it as a structured blog post with a title, category, and markdown content.
-      - Include detailed explanations, usage notes, and multiple examples found from your search.
+      - Format it as a structured, professional educational blog post.
+      - Use a clear hierarchy: Title, Category, and Content.
+      - Content MUST use Markdown with:
+          - Numbered headers (1., 1.1., 1.1.1.) for logical sections.
+          - Bullet points for lists.
+          - Bold text for key terms.
+          - Blockquotes (>) for examples, with "Ví dụ:" and explanations.
+          - Tables for comparisons if applicable.
+      - The content should be comprehensive, accurate, and easy to follow, similar to a high-quality textbook.
+      - Use Google Search to ensure the rules and examples are up-to-date and accurate.
       `
     });
   }

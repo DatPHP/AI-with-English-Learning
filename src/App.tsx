@@ -722,18 +722,26 @@ export default function App() {
         .rotate-y-180 { transform: rotateY(180deg); }
         .rotate-y-0 { transform: rotateY(0deg); }
         
-        .prose h1 { font-size: 1.875rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; color: #111827; }
-        .prose h2 { font-size: 1.5rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1f2937; }
-        .prose h3 { font-size: 1.25rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.5rem; color: #374151; }
-        .prose p { margin-bottom: 1rem; color: #4b5563; line-height: 1.75; }
-        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; color: #4b5563; }
-        .prose li { margin-bottom: 0.5rem; }
-        .prose code { background-color: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.875em; color: #ef4444; font-family: monospace; }
-        .prose blockquote { border-left: 4px solid #6366f1; padding-left: 1rem; font-style: italic; color: #4f46e5; margin: 1.5rem 0; background-color: #f5f3ff; padding-top: 0.5rem; padding-bottom: 0.5rem; }
-        .prose strong { color: #111827; font-weight: 600; }
-        .prose table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
-        .prose th, .prose td { border: 1px solid #e5e7eb; padding: 0.75rem; text-align: left; }
-        .prose th { background-color: #f9fafb; font-weight: 600; }
+        .prose h1 { font-size: 2.25rem; font-weight: 800; margin-top: 2.5rem; margin-bottom: 1.5rem; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+        .prose h2 { font-size: 1.75rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; color: #1f2937; display: flex; align-items: center; gap: 0.5rem; }
+        .prose h2::before { content: ""; display: inline-block; width: 4px; height: 1.5rem; background-color: #6366f1; border-radius: 2px; }
+        .prose h3 { font-size: 1.35rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #374151; }
+        .prose p { margin-bottom: 1.25rem; color: #4b5563; line-height: 1.8; font-size: 1.05rem; }
+        .prose ul, .prose ol { padding-left: 1.75rem; margin-bottom: 1.25rem; color: #4b5563; }
+        .prose ul { list-style-type: disc; }
+        .prose ol { list-style-type: decimal; }
+        .prose li { margin-bottom: 0.75rem; line-height: 1.6; }
+        .prose code { background-color: #f3f4f6; padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.9em; color: #ef4444; font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+        .prose blockquote { border-left: 4px solid #6366f1; padding: 1.25rem 1.5rem; font-style: normal; color: #4338ca; margin: 2rem 0; background-color: #f5f3ff; border-radius: 0 0.75rem 0.75rem 0; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); }
+        .prose blockquote p { margin-bottom: 0; font-weight: 500; }
+        .prose blockquote p::before { content: "💡 "; }
+        .prose strong { color: #111827; font-weight: 700; }
+        .prose table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; border: 1px solid #e5e7eb; }
+        .prose th, .prose td { padding: 1rem; text-align: left; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; }
+        .prose th { background-color: #f9fafb; font-weight: 700; color: #374151; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+        .prose tr:last-child td { border-bottom: none; }
+        .prose td:last-child, .prose th:last-child { border-right: none; }
+        .prose hr { margin: 3rem 0; border: 0; border-top: 1px solid #e5e7eb; }
       `}</style>
     </div>
   );
