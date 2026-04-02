@@ -45,7 +45,8 @@ import {
   Image as ImageIcon,
   Upload,
   X,
-  File as FileIcon
+  File as FileIcon,
+  Volume2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
@@ -120,6 +121,20 @@ const TiptapViewer = ({ content }: { content: string }) => {
   }
 
   return <EditorContent editor={editor} />;
+};
+
+const speak = (text: string) => {
+  if ('speechSynthesis' in window) {
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.9; // Slightly slower for clarity
+    window.speechSynthesis.speak(utterance);
+  } else {
+    toast.error("Trình duyệt của bạn không hỗ trợ phát âm.");
+  }
 };
 
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, loading = false }: any) => {
@@ -623,7 +638,18 @@ export default function App() {
                         >
                           {/* Front */}
                           <div className="absolute inset-0 backface-hidden bg-indigo-50 rounded-2xl flex flex-col items-center justify-center p-6 text-center">
-                            <h3 className="text-4xl font-bold text-indigo-900 mb-2">{flashcards[currentCardIndex].word}</h3>
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-4xl font-bold text-indigo-900">{flashcards[currentCardIndex].word}</h3>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  speak(flashcards[currentCardIndex].word);
+                                }}
+                                className="p-2 bg-white rounded-full shadow-sm hover:bg-indigo-100 text-indigo-600 transition-colors"
+                              >
+                                <Volume2 className="w-5 h-5" />
+                              </button>
+                            </div>
                             <p className="text-indigo-500 font-mono">{flashcards[currentCardIndex].phonetic}</p>
                             <p className="mt-4 text-xs text-indigo-400 font-medium uppercase tracking-widest">Click để xem nghĩa</p>
                           </div>
@@ -661,9 +687,20 @@ export default function App() {
                       {flashcards.map((card) => (
                         <div key={card.id} className="bg-white p-4 rounded-xl border border-gray-100 hover:shadow-md transition-all group">
                           <div className="flex justify-between items-start">
-                            <div>
-                              <h4 className="font-bold text-gray-900">{card.word}</h4>
-                              <p className="text-xs text-gray-500 font-mono">{card.phonetic}</p>
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <h4 className="font-bold text-gray-900">{card.word}</h4>
+                                <p className="text-xs text-gray-500 font-mono">{card.phonetic}</p>
+                              </div>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  speak(card.word);
+                                }}
+                                className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all"
+                              >
+                                <Volume2 className="w-4 h-4" />
+                              </button>
                             </div>
                             <button onClick={() => deleteItem('vocabulary', card.id!)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all">
                               <Trash2 className="w-4 h-4" />
