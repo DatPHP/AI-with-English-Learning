@@ -46,13 +46,25 @@ import {
   Upload,
   X,
   File as FileIcon,
-  Volume2
+  Volume2,
+  MessageCircle,
+  Send,
+  Mic,
+  MicOff,
+  Trophy,
+  Award,
+  Calendar,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { analyzeInput, analyzeDocument } from './lib/gemini';
-import { Flashcard, GrammarBlog, UserProfile } from './types';
+import { analyzeInput, analyzeDocument, getChatResponse, getChatSuggestion, evaluateChallengeAnswer } from './lib/gemini';
+import { Flashcard, GrammarBlog, UserProfile, ChatMessage, SpeakingChallengeProgress, DailyChallengeAttempt } from './types';
 import mammoth from 'mammoth';
+import { speakingChallengeData, ChallengeDay } from './data/challengeData';
 
 // Tiptap Imports
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -187,8 +199,28 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [grammarBlogs, setGrammarBlogs] = useState<GrammarBlog[]>([]);
-  const [activeTab, setActiveTab] = useState<'input' | 'vocabulary' | 'grammar'>('input');
+  const [activeTab, setActiveTab] = useState<'input' | 'vocabulary' | 'grammar' | 'chat' | 'challenge'>('input');
   const [selectedBlog, setSelectedBlog] = useState<GrammarBlog | null>(null);
+
+  // Challenge State
+  const [challengeProgress, setChallengeProgress] = useState<SpeakingChallengeProgress | null>(null);
+  const [selectedChallengeDay, setSelectedChallengeDay] = useState<ChallengeDay | null>(null);
+  const [challengeStep, setChallengeStep] = useState<'dashboard' | 'setup' | 'learning' | 'practice' | 'summary'>('dashboard');
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [currentTranscript, setCurrentTranscript] = useState<string[]>([]);
+  const [currentFeedbacks, setCurrentFeedbacks] = useState<any[]>([]);
+  const [isChallengeLoading, setIsChallengeLoading] = useState(false);
+  const [challengeEndDate, setChallengeEndDate] = useState('');
+
+  // AI Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatSuggestion, setChatSuggestion] = useState<string | null>(null);
+  const [chatTimer, setChatTimer] = useState<number | null>(null);
+  const [suggestionTimeout, setSuggestionTimeout] = useState<any>(null);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = React.useRef<any>(null);
 
   // Flashcard Learning State
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -255,7 +287,12 @@ export default function App() {
       setGrammarBlogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as GrammarBlog)));
     }, (e) => handleFirestoreError(e, OperationType.LIST, 'grammarBlogs'));
 
-    return () => { unsubV(); unsubG(); };
+    const chalQuery = doc(db, 'speakingChallenges', user.uid);
+    const unsubChal = onSnapshot(chalQuery, (snap) => {
+      if (snap.exists()) setChallengeProgress(snap.data() as SpeakingChallengeProgress);
+    });
+
+    return () => { unsubV(); unsubG(); unsubChal(); };
   }, [user]);
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -393,6 +430,223 @@ export default function App() {
     }
   };
 
+  const startChat = async () => {
+    if (flashcards.length === 0) {
+      toast.error("Vui lòng học ít nhất một từ vựng để bắt đầu hội thoại.");
+      return;
+    }
+    setIsChatLoading(true);
+    setChatMessages([]);
+    setChatSuggestion(null);
+    try {
+      const vocab = flashcards.slice(0, 10).map(f => f.word);
+      const initialMessage = "Hello! I'm EngMaster AI. Let's practice English using the words you've learned. How are you doing today?";
+      const initialChat: ChatMessage[] = [{ role: 'model', text: initialMessage }];
+      setChatMessages(initialChat);
+      speak(initialMessage);
+      resetSuggestionTimer(initialChat);
+    } catch (e) {
+      toast.error("Không thể khởi động hội thoại.");
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const resetSuggestionTimer = (history: ChatMessage[]) => {
+    if (suggestionTimeout) clearTimeout(suggestionTimeout);
+    setChatSuggestion(null);
+    
+    // Only set timer if it's the user's turn
+    const lastMessage = history[history.length - 1];
+    if (lastMessage.role === 'model') {
+      const timeout = setTimeout(async () => {
+        const vocab = flashcards.slice(0, 10).map(f => f.word);
+        const suggestion = await getChatSuggestion(history, vocab);
+        setChatSuggestion(suggestion);
+      }, 15000);
+      setSuggestionTimeout(timeout);
+    }
+  };
+
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || isChatLoading) return;
+    
+    // Stop listening if sending message
+    if (isListening) stopListening();
+
+    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', text }];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setChatSuggestion(null);
+    if (suggestionTimeout) clearTimeout(suggestionTimeout);
+    
+    // Turn limit check (6-12 turns total)
+    if (newMessages.length >= 24) {
+      toast.info("Buổi hội thoại kết thúc. Hẹn gặp lại bạn vào ngày mai!");
+      return;
+    }
+
+    setIsChatLoading(true);
+    try {
+      const vocab = flashcards.slice(0, 10).map(f => f.word);
+      const aiResponse = await getChatResponse(newMessages, vocab);
+      const updatedMessages: ChatMessage[] = [...newMessages, { role: 'model', text: aiResponse }];
+      setChatMessages(updatedMessages);
+      speak(aiResponse);
+      resetSuggestionTimer(updatedMessages);
+    } catch (e) {
+      toast.error("Lỗi hội thoại.");
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const startListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói.");
+      return;
+    }
+
+    try {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+
+      recognitionRef.current.onstart = () => {
+        setIsListening(true);
+        toast.info("Đang nghe... Hãy nói bằng tiếng Anh.");
+      };
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setChatInput(transcript);
+        handleSendMessage(transcript);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          toast.error("Vui lòng cấp quyền truy cập microphone.");
+        } else {
+          toast.error("Lỗi nhận diện giọng nói. Hãy thử lại.");
+        }
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current.start();
+    } catch (e) {
+      console.error(e);
+      setIsListening(false);
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'chat' && chatMessages.length === 0) {
+      startChat();
+    }
+    return () => {
+      if (suggestionTimeout) clearTimeout(suggestionTimeout);
+      if (recognitionRef.current) recognitionRef.current.stop();
+    }
+  }, [activeTab]);
+
+  const startChallenge = async () => {
+    if (!user) return;
+    const start = new Date();
+    const end = new Date();
+    end.setDate(start.getDate() + 33); // 33 days window
+    
+    const newProgress: SpeakingChallengeProgress = {
+      userId: user.uid,
+      startDate: start.toISOString(),
+      targetEndDate: end.toISOString(),
+      completedDays: [],
+      lastCompletedDay: 0,
+      attempts: []
+    };
+    
+    try {
+      await setDoc(doc(db, 'speakingChallenges', user.uid), newProgress);
+      setChallengeProgress(newProgress);
+      setChallengeStep('dashboard');
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'speakingChallenges');
+    }
+  };
+
+  const handleCompleteDay = async () => {
+    if (!challengeProgress || !selectedChallengeDay) return;
+    
+    const dayNum = selectedChallengeDay.day;
+    if (challengeProgress.completedDays.includes(dayNum)) {
+      setChallengeStep('dashboard');
+      return;
+    }
+
+    const updatedProgress = {
+      ...challengeProgress,
+      completedDays: [...challengeProgress.completedDays, dayNum].sort((a, b) => a - b),
+      lastCompletedDay: Math.max(challengeProgress.lastCompletedDay, dayNum),
+      attempts: [
+        ...challengeProgress.attempts,
+        {
+          day: dayNum,
+          completedAt: new Date().toISOString(),
+          transcripts: currentTranscript,
+          aiFeedbacks: currentFeedbacks.map(f => JSON.stringify(f))
+        }
+      ]
+    };
+
+    try {
+      await setDoc(doc(db, 'speakingChallenges', user.uid), updatedProgress);
+      toast.success(`Chúc mừng! Bạn đã hoàn thành ngày thứ ${dayNum}. Tiến bộ thêm 1 chút rồi đấy!`);
+      setChallengeStep('summary');
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'speakingChallenges');
+    }
+  };
+
+  const handleChallengeSpeakResult = async (transcript: string) => {
+    if (!selectedChallengeDay) return;
+    setIsChallengeLoading(true);
+    try {
+      const question = selectedChallengeDay.questions[currentQuestionIndex].question;
+      const result = await evaluateChallengeAnswer(
+        selectedChallengeDay.title,
+        question,
+        transcript,
+        selectedChallengeDay.keywords
+      );
+      
+      setCurrentTranscript([...currentTranscript, transcript]);
+      setCurrentFeedbacks([...currentFeedbacks, result]);
+      
+      if (currentQuestionIndex < selectedChallengeDay.questions.length - 1) {
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+      } else {
+        await handleCompleteDay();
+      }
+    } catch (e) {
+      toast.error("Lỗi phân tích hội thoại.");
+    } finally {
+      setIsChallengeLoading(false);
+    }
+  };
+
   if (loading && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -501,6 +755,20 @@ export default function App() {
           >
             <FileText className="w-5 h-5" />
             Ngữ pháp ({grammarBlogs.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('challenge')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'challenge' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Trophy className="w-5 h-5" />
+            Thử thách 30 ngày
+          </button>
+          <button 
+            onClick={() => setActiveTab('chat')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+          >
+            <MessageCircle className="w-5 h-5" />
+            Hội thoại AI
           </button>
         </nav>
 
@@ -720,6 +988,107 @@ export default function App() {
               </motion.div>
             )}
 
+            {activeTab === 'chat' && (
+              <motion.div 
+                key="chat"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[600px] overflow-hidden"
+              >
+                {/* Chat Header */}
+                <div className="p-4 border-b border-gray-100 bg-indigo-50 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white">
+                      <Brain className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">EngMaster AI Chat</h3>
+                      <p className="text-[10px] text-indigo-600 font-medium">Đang luyện tập cùng từ vựng của bạn</p>
+                    </div>
+                  </div>
+                  <button onClick={startChat} className="p-2 text-gray-400 hover:text-indigo-600 transition-colors">
+                    <RotateCcw className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Chat Messages */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
+                  {chatMessages.map((msg, idx) => (
+                    <motion.div 
+                      key={idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>
+                        <p className="text-sm leading-relaxed">{msg.text}</p>
+                        {msg.role === 'model' && (
+                          <button onClick={() => speak(msg.text)} className="mt-1 text-[10px] opacity-60 hover:opacity-100 flex items-center gap-1">
+                            <Volume2 className="w-3 h-3" /> Nghe lại
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                  {isChatLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-none border border-gray-100">
+                        <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+                      </div>
+                    </div>
+                  )}
+                  {chatSuggestion && !isChatLoading && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center gap-2 py-4"
+                    >
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Gợi ý từ AI:</p>
+                      <button 
+                        onClick={() => handleSendMessage(chatSuggestion)}
+                        className="bg-white border-2 border-dashed border-indigo-200 text-indigo-600 px-4 py-2 rounded-xl text-xs hover:border-indigo-400 hover:bg-indigo-50 transition-all italic"
+                      >
+                        "{chatSuggestion}"
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Chat Input */}
+                <div className="p-4 border-t border-gray-100 bg-white">
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={isListening ? stopListening : startListening}
+                      className={`p-2 rounded-xl transition-all shadow-md ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-indigo-600 hover:bg-gray-200'}`}
+                      disabled={isChatLoading}
+                      title={isListening ? "Dừng nghe" : "Nói bằng tiếng Anh"}
+                    >
+                      {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
+                    <input 
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage(chatInput)}
+                      placeholder="Nhập hoặc nhấn mic để nói..."
+                      className="flex-1 px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      disabled={isChatLoading}
+                    />
+                    <button 
+                      onClick={() => handleSendMessage(chatInput)}
+                      disabled={!chatInput.trim() || isChatLoading}
+                      className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md"
+                    >
+                      <Send className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[10px] text-gray-400 text-center">
+                    Bạn đã thực hiện {Math.floor(chatMessages.length / 2)} / 12 lượt hội thoại hôm nay.
+                  </p>
+                </div>
+              </motion.div>
+            )}
             {activeTab === 'grammar' && (
               <motion.div 
                 key="grammar"
@@ -779,6 +1148,262 @@ export default function App() {
                     </div>
                   )}
                 </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'challenge' && (
+              <motion.div 
+                key="challenge"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                {!challengeProgress ? (
+                  <div className="bg-white rounded-3xl p-8 shadow-xl border border-indigo-50 text-center max-w-2xl mx-auto">
+                    <Trophy className="w-20 h-20 text-yellow-500 mx-auto mb-6 drop-shadow-lg" />
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">Thử thách 30 ngày luyện nói IELTS</h2>
+                    <p className="text-gray-600 mb-8 italic">"Muốn nói hay thì phải nói nhiều. Muốn nói chuẩn thì phải có người nghe. AI sẽ là người bạn đồng hành 24/7 của bạn!"</p>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8 text-left">
+                      <div className="bg-green-50 p-4 rounded-2xl border border-green-100">
+                        <Target className="w-6 h-6 text-green-600 mb-2" />
+                        <h4 className="font-bold text-sm">30 Chủ đề</h4>
+                        <p className="text-xs text-gray-500">Từ cơ bản đến nâng cao theo chuẩn IELTS.</p>
+                      </div>
+                      <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                        <Brain className="w-6 h-6 text-blue-600 mb-2" />
+                        <h4 className="font-bold text-sm">AI Chấm điểm</h4>
+                        <p className="text-xs text-gray-500">Sửa lỗi ngữ pháp & gợi ý câu trả lời tốt hơn.</p>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-2xl border border-purple-100">
+                        <Award className="w-6 h-6 text-purple-600 mb-2" />
+                        <h4 className="font-bold text-sm">Sự kỷ luật</h4>
+                        <p className="text-xs text-gray-500">Chỉ được nghỉ 3 ngày trong 33 ngày tới.</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-indigo-50 p-6 rounded-2xl mb-8">
+                       <p className="text-sm font-medium text-indigo-900 mb-2">Bạn sẽ nhận được gì sau 30 ngày?</p>
+                       <ul className="text-xs text-indigo-700 space-y-2">
+                         <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Tự tin trả lời mọi câu hỏi Speaking Part 1, 2.</li>
+                         <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Vốn từ vựng tăng thêm 150+ keywords "xịn".</li>
+                         <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Tốc độ phản xạ hội thoại nhanh hơn 200%.</li>
+                       </ul>
+                    </div>
+
+                    <Button onClick={startChallenge} className="w-full md:w-auto md:px-12 py-4 text-lg">Bắt đầu hành trình ngay!</Button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Progress Header */}
+                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 bg-yellow-100 rounded-xl">
+                          <Trophy className="w-6 h-6 text-yellow-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900">Tiến độ của bạn</h3>
+                          <p className="text-xs text-gray-400">Hoàn thành {challengeProgress.completedDays.length} / 30 ngày</p>
+                        </div>
+                      </div>
+                      <div className="flex-1 max-w-md w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-indigo-500 to-green-500 transition-all duration-500" 
+                          style={{ width: `${(challengeProgress.completedDays.length / 30) * 100}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 text-xs font-bold text-indigo-600">
+                         <Calendar className="w-4 h-4" />
+                         Dự kiến kết thúc: {new Date(challengeProgress.targetEndDate).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    {challengeStep === 'dashboard' && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                        {speakingChallengeData.map((item) => {
+                          const isCompleted = challengeProgress.completedDays.includes(item.day);
+                          const isLocked = item.day > challengeProgress.lastCompletedDay + 1;
+                          
+                          return (
+                            <button 
+                              key={item.day}
+                              disabled={isLocked}
+                              onClick={() => {
+                                setSelectedChallengeDay(item);
+                                setChallengeStep('learning');
+                                setCurrentQuestionIndex(0);
+                                setCurrentTranscript([]);
+                                setCurrentFeedbacks([]);
+                              }}
+                              className={`relative p-6 rounded-2xl border transition-all flex flex-col items-center justify-center gap-2 group ${isCompleted ? 'bg-green-50 border-green-200' : isLocked ? 'bg-gray-50 border-gray-100 opacity-60 cursor-not-allowed' : 'bg-white border-indigo-100 hover:border-indigo-400 hover:shadow-lg'}`}
+                            >
+                              {isCompleted && <CheckCircle2 className="absolute top-2 right-2 w-5 h-5 text-green-600" />}
+                              {isLocked && <Lock className="absolute top-2 right-2 w-4 h-4 text-gray-300" />}
+                              <span className={`text-xl font-bold ${isCompleted ? 'text-green-600' : 'text-gray-900 group-hover:text-indigo-600'}`}>NGÀY {item.day}</span>
+                              <p className="text-[10px] text-gray-500 font-medium text-center line-clamp-1">{item.title}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {(challengeStep === 'learning' || challengeStep === 'practice' || challengeStep === 'summary') && selectedChallengeDay && (
+                      <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+                        {/* Day Header */}
+                        <div className="p-6 bg-indigo-600 text-white flex justify-between items-center">
+                          <button onClick={() => setChallengeStep('dashboard')} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                            <ChevronLeft className="w-6 h-6" />
+                          </button>
+                          <div className="text-center">
+                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Day {selectedChallengeDay.day}</span>
+                            <h2 className="text-xl font-bold">{selectedChallengeDay.title}</h2>
+                          </div>
+                          <div className="w-10 h-10" /> {/* Spacer */}
+                        </div>
+
+                        {/* Step Content */}
+                        <div className="p-8">
+                          {challengeStep === 'learning' && (
+                            <div className="space-y-8 max-w-3xl mx-auto">
+                              <div>
+                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                  <BookOpen className="w-5 h-5 text-indigo-600" /> Bước 1: Làm chủ Keywords
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {selectedChallengeDay.keywords.map((k, idx) => (
+                                    <div key={idx} className="p-4 rounded-xl bg-gray-50 border border-gray-100 hover:border-indigo-200 transition-colors">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <p className="font-bold text-indigo-600">{k.word}</p>
+                                        <span className="text-[10px] text-gray-400">({k.meaning})</span>
+                                        <button onClick={() => speak(k.word)} className="ml-auto p-1.5 hover:bg-white rounded-full"><Volume2 className="w-3 h-3" /></button>
+                                      </div>
+                                      <p className="text-xs text-gray-500 italic">"{k.example}"</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                  <Target className="w-5 h-5 text-indigo-600" /> Bước 2: Chuẩn bị ý tưởng
+                                </h3>
+                                <div className="space-y-4">
+                                  {selectedChallengeDay.questions.map((q, idx) => (
+                                    <div key={idx} className="p-4 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30">
+                                      <p className="text-sm font-bold text-gray-800 mb-2">Câu {idx + 1}: {q.question}</p>
+                                      <div className="flex items-start gap-2 mb-2">
+                                        <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded font-bold">Lược đồ</span>
+                                        <p className="text-xs text-indigo-600 font-medium">{q.description}</p>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 pt-2">
+                                        {q.starters.map((s, i) => (
+                                          <span key={i} className="text-[10px] bg-white border border-indigo-100 text-gray-400 px-2 py-1 rounded italic">{s}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <Button onClick={() => setChallengeStep('practice')} className="w-full py-4 text-lg">Bắt đầu Luyện nói ngay!</Button>
+                            </div>
+                          )}
+
+                          {challengeStep === 'practice' && (
+                            <div className="max-w-2xl mx-auto flex flex-col h-[500px]">
+                              {/* Progress bar inside session */}
+                              <div className="flex gap-2 mb-8">
+                                {selectedChallengeDay.questions.map((_, idx) => (
+                                  <div key={idx} className={`h-1.5 flex-1 rounded-full transition-all ${idx < currentQuestionIndex ? 'bg-green-500' : idx === currentQuestionIndex ? 'bg-indigo-600' : 'bg-gray-100'}`} />
+                                ))}
+                              </div>
+
+                              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
+                                <motion.div 
+                                  key={currentQuestionIndex}
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  className="space-y-4"
+                                >
+                                  <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 mb-2">
+                                    <Brain className="w-8 h-8" />
+                                  </div>
+                                  <h3 className="text-2xl font-bold text-gray-900">{selectedChallengeDay.questions[currentQuestionIndex].question}</h3>
+                                  <button onClick={() => speak(selectedChallengeDay.questions[currentQuestionIndex].question)} className="flex items-center gap-2 text-indigo-600 text-sm font-medium mx-auto hover:underline">
+                                    <Volume2 className="w-4 h-4" /> Nghe giám khảo hỏi
+                                  </button>
+                                </motion.div>
+
+                                <div className="w-full bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                   <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Cấu trúc gợi ý</p>
+                                   <p className="text-sm text-indigo-600 italic">{selectedChallengeDay.questions[currentQuestionIndex].description}</p>
+                                </div>
+
+                                <div className="space-y-4 w-full">
+                                  <button 
+                                    onClick={isListening ? stopListening : startListening}
+                                    className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto transition-all shadow-xl ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-indigo-600 text-white hover:scale-105'}`}
+                                    disabled={isChallengeLoading}
+                                  >
+                                    {isListening ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
+                                  </button>
+                                  <p className="text-sm font-medium text-gray-500">{isListening ? 'Giám khảo đang nghe bạn nói...' : isChallengeLoading ? 'Đang phân tích câu trả lời...' : 'Nhấn vào Mic và bắt đầu trả lời bằng tiếng Anh'}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {challengeStep === 'summary' && (
+                            <div className="space-y-8 max-w-3xl mx-auto">
+                              <div className="text-center">
+                                <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto mb-4" />
+                                <h3 className="text-2x font-bold text-gray-900">Hoàn thành Ngày {selectedChallengeDay.day}!</h3>
+                                <p className="text-gray-500 italic">"Bạn đã giỏi hơn bạn của ngày hôm qua 1% rồi đó."</p>
+                              </div>
+
+                              <div className="space-y-6">
+                                {currentFeedbacks.map((fb, idx) => {
+                                   const fbData = typeof fb === 'string' ? JSON.parse(fb) : fb;
+                                   return (
+                                     <div key={idx} className="bg-gray-50 rounded-2xl p-6 border border-gray-100 space-y-4">
+                                       <div className="flex justify-between items-center">
+                                         <p className="text-sm font-bold text-gray-900">Câu {idx + 1}: {selectedChallengeDay.questions[idx].question}</p>
+                                         <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-100">
+                                            <span className="text-xs font-bold text-indigo-600">{fbData.score}/10</span>
+                                         </div>
+                                       </div>
+                                       
+                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                         <div className="space-y-1">
+                                           <span className="text-[10px] text-gray-400 font-bold uppercase">Bạn đã nói:</span>
+                                           <p className="text-xs text-gray-600 line-clamp-2 italic">"{currentTranscript[idx]}"</p>
+                                         </div>
+                                         <div className="space-y-1 p-3 bg-green-100/50 rounded-xl">
+                                           <div className="flex items-center gap-2 mb-1">
+                                              <span className="text-[10px] text-green-600 font-bold uppercase">Gợi ý từ AI:</span>
+                                              <button onClick={() => speak(fbData.improvedVersion)} className="p-1 hover:bg-white rounded-full"><Volume2 className="w-3 h-3 text-green-600" /></button>
+                                           </div>
+                                           <p className="text-xs text-green-800 font-medium">"{fbData.improvedVersion}"</p>
+                                         </div>
+                                       </div>
+
+                                       <div className="p-3 bg-white rounded-xl border border-gray-100">
+                                         <span className="text-[10px] text-indigo-400 font-bold uppercase">Nhận xét:</span>
+                                         <p className="text-xs text-gray-700 leading-relaxed mt-1">{fbData.feedback}</p>
+                                       </div>
+                                     </div>
+                                   )
+                                })}
+                              </div>
+
+                              <Button onClick={() => setChallengeStep('dashboard')} className="w-full py-4 bg-green-600 hover:bg-green-700">Trở lại Dashboard</Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

@@ -31,3 +31,31 @@ export type InputAnalysisResult = {
   type: 'vocabulary' | 'grammar';
   data: Flashcard[] | GrammarBlog;
 };
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
+
+export interface ChatSession {
+  messages: ChatMessage[];
+  suggestion?: string;
+  isCompleted: boolean;
+  createdAt: string;
+}
+
+export interface DailyChallengeAttempt {
+  day: number;
+  completedAt: string;
+  transcripts: string[]; // Answers for each question
+  aiFeedbacks: string[]; // Feedback for each answer
+}
+
+export interface SpeakingChallengeProgress {
+  userId: string;
+  startDate: string;
+  targetEndDate: string;
+  completedDays: number[]; // Array of day numbers completed [1, 2, 5...]
+  lastCompletedDay: number;
+  attempts: DailyChallengeAttempt[];
+}

@@ -1,5 +1,5 @@
 {
   "name": "EngMaster AI - Học Tiếng Anh Thông Minh",
-  "description": "Ứng dụng học từ vựng và ngữ pháp tiếng Anh tích hợp AI, hỗ trợ Flashcards và Blog ngữ pháp.",
-  "requestFramePermissions": []
+  "description": "Ứng dụng học tiếng Anh tích hợp AI, hỗ trợ Flashcards, Ngữ pháp và Thử thách luyện nói 30 ngày chuyên sâu.",
+  "requestFramePermissions": ["microphone"]
 }

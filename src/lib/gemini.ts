@@ -213,3 +213,96 @@ export async function analyzeDocument(content: string | { data: string, mimeType
     };
   }
 }
+
+export async function getChatResponse(messages: { role: 'user' | 'model', text: string }[], vocabulary: string[]) {
+  const model = "gemini-3-flash-preview";
+  
+  const systemInstruction = `You are a helpful and friendly English conversation partner named EngMaster AI. 
+  Your goal is to help the user practice English by having a natural conversation.
+  The conversation should be themed around these vocabulary words the user has learned: ${vocabulary.join(', ')}.
+  Try to use at least one or two of these words in each of your responses naturally.
+  Keep your responses concise (1-3 sentences) to encourage the user to speak more.
+  Ask open-ended questions related to the vocabulary and the user's life.
+  If the user makes a significant grammatical mistake, gently correct it and explain why, then continue the conversation.
+  Speak English only.`;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: messages.map(m => ({
+      role: m.role,
+      parts: [{ text: m.text }]
+    })),
+    config: {
+      systemInstruction
+    }
+  });
+
+  return response.text || "I'm sorry, I couldn't understand that. Can we try again?";
+}
+
+export async function getChatSuggestion(messages: { role: 'user' | 'model', text: string }[], vocabulary: string[]) {
+  const model = "gemini-3-flash-preview";
+  
+  const systemInstruction = `You are an English teacher. Based on the current conversation history and the target vocabulary: ${vocabulary.join(', ')}, 
+  provide ONE brief suggestion (max 12 words) for what the user could say next to continue the conversation. 
+  The suggestion should be a complete sentence or a question in English.
+  Return ONLY the suggested text, nothing else.`;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: messages.map(m => ({
+      role: m.role,
+      parts: [{ text: m.text }]
+    })),
+    config: {
+      systemInstruction
+    }
+  });
+
+  return response.text?.trim() || "Could you tell me more about that?";
+}
+
+export async function evaluateChallengeAnswer(
+  dayTitle: string,
+  question: string,
+  userAnswer: string,
+  keywords: { word: string; meaning: string }[]
+) {
+  const model = "gemini-3-flash-preview";
+  
+  const systemInstruction = `You are a friendly IELTS Speaking Expert. 
+  Topic: Day - ${dayTitle}
+  Question: "${question}"
+  Target Keywords: ${keywords.map(k => `${k.word} (${k.meaning})`).join(', ')}
+
+  Task: 
+  1. Evaluate the user's spoken answer (fluency, grammar, vocabulary).
+  2. Provide a "Better Version" of their answer using natural IELTS-style English and today's keywords.
+  3. Give mini-encouragement.
+  
+  Return the response in JSON format:
+  {
+    "feedback": "Your evaluation (in Vietnamese)",
+    "improvedVersion": "Exactly what the user should say (in English)",
+    "score": 1-10
+  }`;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: [{ role: 'user', parts: [{ text: userAnswer }] }],
+    config: {
+      systemInstruction,
+      responseMimeType: "application/json"
+    }
+  });
+
+  try {
+    return JSON.parse(response.text || "{}");
+  } catch (e) {
+    return {
+      feedback: "AI không thể xử lý phản hồi.",
+      improvedVersion: userAnswer,
+      score: 5
+    };
+  }
+}
