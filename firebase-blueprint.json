@@ -41,6 +41,20 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "title", "content"]
+    },
+    "speakingChallenges": {
+      "title": "Speaking Challenge",
+      "description": "Progress tracking for the 30-day speaking challenge.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "targetEndDate": { "type": "string", "format": "date-time" },
+        "completedDays": { "type": "array", "items": { "type": "number" } },
+        "lastCompletedDay": { "type": "number" },
+        "attempts": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["userId", "startDate", "targetEndDate"]
     }
   },
   "firestore": {
@@ -55,6 +69,10 @@
     "/grammarBlogs/{blogId}": {
       "schema": "grammarBlogs",
       "description": "Grammar blog posts."
+    },
+    "/speakingChallenges/{userId}": {
+      "schema": "speakingChallenges",
+      "description": "30-day speaking challenge progress."
     }
   }
 }

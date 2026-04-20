@@ -221,6 +221,8 @@ export default function App() {
   const [suggestionTimeout, setSuggestionTimeout] = useState<any>(null);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = React.useRef<any>(null);
+  const silenceTimerRef = React.useRef<any>(null);
+  const accumulatedTranscriptRef = React.useRef<string>("");
 
   // Flashcard Learning State
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -463,7 +465,7 @@ export default function App() {
         const vocab = flashcards.slice(0, 10).map(f => f.word);
         const suggestion = await getChatSuggestion(history, vocab);
         setChatSuggestion(suggestion);
-      }, 15000);
+      }, 60000); // Wait 60s for silence before suggesting
       setSuggestionTimeout(timeout);
     }
   };
@@ -501,42 +503,79 @@ export default function App() {
     }
   };
 
-  const startListening = () => {
+  const startListening = (onFinal?: (text: string) => void) => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói.");
       return;
     }
 
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+
     try {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.lang = 'en-US';
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      
+      accumulatedTranscriptRef.current = "";
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+      const resetSilenceTimer = () => {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          if (accumulatedTranscriptRef.current.trim()) {
+            stopListening();
+            if (onFinal) {
+              onFinal(accumulatedTranscriptRef.current);
+            } else {
+              handleSendMessage(accumulatedTranscriptRef.current);
+            }
+          } else {
+            stopListening();
+            toast.info("Yên lặng quá... AI đã dừng nghe.");
+          }
+        }, 60000); // 60 seconds silence detection
+      };
 
       recognitionRef.current.onstart = () => {
         setIsListening(true);
-        toast.info("Đang nghe... Hãy nói bằng tiếng Anh.");
+        resetSilenceTimer();
+        toast.info("Đang nghe... AI sẽ chờ 60s nếu bạn im lặng mới phản hồi.");
       };
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setChatInput(transcript);
-        handleSendMessage(transcript);
+        let finalTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+        
+        if (finalTranscript) {
+          accumulatedTranscriptRef.current += " " + finalTranscript;
+          setChatInput(accumulatedTranscriptRef.current.trim());
+          resetSilenceTimer(); // Reset timer upon hearing speech
+        }
       };
 
       recognitionRef.current.onerror = (event: any) => {
         console.error("Speech recognition error", event.error);
-        setIsListening(false);
-        if (event.error === 'not-allowed') {
-          toast.error("Vui lòng cấp quyền truy cập microphone.");
-        } else {
-          toast.error("Lỗi nhận diện giọng nói. Hãy thử lại.");
+        if (event.error !== 'no-speech') { // Ignore frequent no-speech errors in continuous mode
+          setIsListening(false);
+          if (event.error === 'not-allowed') {
+            toast.error("Vui lòng cấp quyền truy cập microphone.");
+          } else {
+            toast.error(`Lỗi nhận diện: ${event.error}`);
+          }
         }
       };
 
       recognitionRef.current.onend = () => {
-        setIsListening(false);
+        // Only flip state if not manually stopped or if silence hit
+        // In continuous mode, some browsers might stop accidentally, but we try to respect silenceTimer
       };
 
       recognitionRef.current.start();
@@ -549,8 +588,13 @@ export default function App() {
   const stopListening = () => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
-      setIsListening(false);
+      recognitionRef.current = null;
     }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setIsListening(false);
   };
 
   useEffect(() => {
@@ -1059,7 +1103,11 @@ export default function App() {
                 <div className="p-4 border-t border-gray-100 bg-white">
                   <div className="flex gap-2">
                     <button 
-                      onClick={isListening ? stopListening : startListening}
+                      onClick={isListening ? () => {
+                        const text = accumulatedTranscriptRef.current.trim();
+                        stopListening();
+                        if (text) handleSendMessage(text);
+                      } : () => startListening()}
                       className={`p-2 rounded-xl transition-all shadow-md ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-indigo-600 hover:bg-gray-200'}`}
                       disabled={isChatLoading}
                       title={isListening ? "Dừng nghe" : "Nói bằng tiếng Anh"}
@@ -1340,14 +1388,34 @@ export default function App() {
                                 </div>
 
                                 <div className="space-y-4 w-full">
-                                  <button 
-                                    onClick={isListening ? stopListening : startListening}
-                                    className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto transition-all shadow-xl ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-indigo-600 text-white hover:scale-105'}`}
-                                    disabled={isChallengeLoading}
-                                  >
-                                    {isListening ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-                                  </button>
-                                  <p className="text-sm font-medium text-gray-500">{isListening ? 'Giám khảo đang nghe bạn nói...' : isChallengeLoading ? 'Đang phân tích câu trả lời...' : 'Nhấn vào Mic và bắt đầu trả lời bằng tiếng Anh'}</p>
+                                  <div className="flex justify-center gap-4">
+                                    <button 
+                                      onClick={isListening ? stopListening : () => startListening(handleChallengeSpeakResult)}
+                                      className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-indigo-600 text-white hover:scale-105'}`}
+                                      disabled={isChallengeLoading}
+                                    >
+                                      {isListening ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
+                                    </button>
+                                    {isListening && (
+                                      <button 
+                                        onClick={() => {
+                                          const text = accumulatedTranscriptRef.current.trim();
+                                          stopListening();
+                                          if (text) handleChallengeSpeakResult(text);
+                                        }}
+                                        className="w-20 h-20 rounded-full bg-green-500 text-white flex items-center justify-center shadow-xl hover:scale-105"
+                                      >
+                                        <Send className="w-8 h-8" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className="text-sm font-medium text-gray-500">
+                                    {isListening 
+                                      ? 'Giám khảo đang chăm chú nghe... (Sẽ tự động phân tích sau 60s im lặng)' 
+                                      : isChallengeLoading 
+                                        ? 'Giám khảo đang phân tích kỹ câu trả lời của bạn...' 
+                                        : 'Nhấn Mic và tự do nói nội dung của bạn'}
+                                  </p>
                                 </div>
                               </div>
                             </div>
