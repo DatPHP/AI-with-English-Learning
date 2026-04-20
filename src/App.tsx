@@ -211,6 +211,8 @@ export default function App() {
   const [currentFeedbacks, setCurrentFeedbacks] = useState<any[]>([]);
   const [isChallengeLoading, setIsChallengeLoading] = useState(false);
   const [challengeEndDate, setChallengeEndDate] = useState('');
+  const [currentQuestionFeedback, setCurrentQuestionFeedback] = useState<any | null>(null);
+  const [currentQuestionTranscript, setCurrentQuestionTranscript] = useState<string | null>(null);
 
   // AI Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -527,17 +529,17 @@ export default function App() {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
           if (accumulatedTranscriptRef.current.trim()) {
+            const final = accumulatedTranscriptRef.current.trim();
             stopListening();
             if (onFinal) {
-              onFinal(accumulatedTranscriptRef.current);
+              onFinal(final);
             } else {
-              handleSendMessage(accumulatedTranscriptRef.current);
+              handleSendMessage(final);
             }
           } else {
             stopListening();
-            toast.info("Yên lặng quá... AI đã dừng nghe.");
           }
-        }, 60000); // 60 seconds silence detection
+        }, 20000); // 20 seconds silence detection
       };
 
       recognitionRef.current.onstart = () => {
@@ -676,18 +678,63 @@ export default function App() {
         selectedChallengeDay.keywords
       );
       
-      setCurrentTranscript([...currentTranscript, transcript]);
-      setCurrentFeedbacks([...currentFeedbacks, result]);
-      
-      if (currentQuestionIndex < selectedChallengeDay.questions.length - 1) {
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-      } else {
-        await handleCompleteDay();
-      }
+      setCurrentQuestionTranscript(transcript);
+      setCurrentQuestionFeedback(result);
     } catch (e) {
       toast.error("Lỗi phân tích hội thoại.");
     } finally {
       setIsChallengeLoading(false);
+    }
+  };
+
+  const proceedToNextQuestion = async () => {
+    if (!selectedChallengeDay || !currentQuestionFeedback || !currentQuestionTranscript) return;
+
+    const newTranscripts = [...currentTranscript, currentQuestionTranscript];
+    const newFeedbacks = [...currentFeedbacks, currentQuestionFeedback];
+    
+    setCurrentTranscript(newTranscripts);
+    setCurrentFeedbacks(newFeedbacks);
+    setCurrentQuestionTranscript(null);
+    setCurrentQuestionFeedback(null);
+
+    if (currentQuestionIndex < selectedChallengeDay.questions.length - 1) {
+      const nextIndex = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(nextIndex);
+      // Auto speak next question
+      setTimeout(() => speak(selectedChallengeDay.questions[nextIndex].question), 500);
+    } else {
+      // Complete day
+      // Note: we need to use the functional update or local vars because state hasn't updated yet
+      await finishDay(newTranscripts, newFeedbacks);
+    }
+  };
+
+  const finishDay = async (transcripts: string[], feedbacks: any[]) => {
+    if (!challengeProgress || !selectedChallengeDay) return;
+    
+    const dayNum = selectedChallengeDay.day;
+    const updatedProgress = {
+      ...challengeProgress,
+      completedDays: Array.from(new Set([...challengeProgress.completedDays, dayNum])).sort((a, b) => a - b),
+      lastCompletedDay: Math.max(challengeProgress.lastCompletedDay, dayNum),
+      attempts: [
+        ...challengeProgress.attempts,
+        {
+          day: dayNum,
+          completedAt: new Date().toISOString(),
+          transcripts,
+          aiFeedbacks: feedbacks.map(f => JSON.stringify(f))
+        }
+      ]
+    };
+
+    try {
+      await setDoc(doc(db, 'speakingChallenges', user!.uid), updatedProgress);
+      toast.success(`Chúc mừng! Bạn đã hoàn thành ngày thứ ${dayNum}.`);
+      setChallengeStep('summary');
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'speakingChallenges');
     }
   };
 
@@ -1353,12 +1400,18 @@ export default function App() {
                                 </div>
                               </div>
 
-                              <Button onClick={() => setChallengeStep('practice')} className="w-full py-4 text-lg">Bắt đầu Luyện nói ngay!</Button>
+                              <Button onClick={() => {
+                                setChallengeStep('practice');
+                                // Auto speak when starting practice
+                                if (selectedChallengeDay) {
+                                  setTimeout(() => speak(selectedChallengeDay.questions[0].question), 500);
+                                }
+                              }} className="w-full py-4 text-lg">Bắt đầu Luyện nói ngay!</Button>
                             </div>
                           )}
 
                           {challengeStep === 'practice' && (
-                            <div className="max-w-2xl mx-auto flex flex-col h-[500px]">
+                            <div className="max-w-2xl mx-auto flex flex-col min-h-[500px]">
                               {/* Progress bar inside session */}
                               <div className="flex gap-2 mb-8">
                                 {selectedChallengeDay.questions.map((_, idx) => (
@@ -1367,56 +1420,125 @@ export default function App() {
                               </div>
 
                               <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
-                                <motion.div 
-                                  key={currentQuestionIndex}
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="space-y-4"
-                                >
-                                  <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 mb-2">
-                                    <Brain className="w-8 h-8" />
-                                  </div>
-                                  <h3 className="text-2xl font-bold text-gray-900">{selectedChallengeDay.questions[currentQuestionIndex].question}</h3>
-                                  <button onClick={() => speak(selectedChallengeDay.questions[currentQuestionIndex].question)} className="flex items-center gap-2 text-indigo-600 text-sm font-medium mx-auto hover:underline">
-                                    <Volume2 className="w-4 h-4" /> Nghe giám khảo hỏi
-                                  </button>
-                                </motion.div>
-
-                                <div className="w-full bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                   <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Cấu trúc gợi ý</p>
-                                   <p className="text-sm text-indigo-600 italic">{selectedChallengeDay.questions[currentQuestionIndex].description}</p>
-                                </div>
-
-                                <div className="space-y-4 w-full">
-                                  <div className="flex justify-center gap-4">
-                                    <button 
-                                      onClick={isListening ? stopListening : () => startListening(handleChallengeSpeakResult)}
-                                      className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-indigo-600 text-white hover:scale-105'}`}
-                                      disabled={isChallengeLoading}
+                                <AnimatePresence mode="wait">
+                                  {!currentQuestionFeedback ? (
+                                    <motion.div 
+                                      key="asking"
+                                      initial={{ opacity: 0, y: 10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -10 }}
+                                      className="space-y-6 w-full"
                                     >
-                                      {isListening ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-                                    </button>
-                                    {isListening && (
-                                      <button 
-                                        onClick={() => {
-                                          const text = accumulatedTranscriptRef.current.trim();
-                                          stopListening();
-                                          if (text) handleChallengeSpeakResult(text);
-                                        }}
-                                        className="w-20 h-20 rounded-full bg-green-500 text-white flex items-center justify-center shadow-xl hover:scale-105"
-                                      >
-                                        <Send className="w-8 h-8" />
-                                      </button>
-                                    )}
-                                  </div>
-                                  <p className="text-sm font-medium text-gray-500">
-                                    {isListening 
-                                      ? 'Giám khảo đang chăm chú nghe... (Sẽ tự động phân tích sau 60s im lặng)' 
-                                      : isChallengeLoading 
-                                        ? 'Giám khảo đang phân tích kỹ câu trả lời của bạn...' 
-                                        : 'Nhấn Mic và tự do nói nội dung của bạn'}
-                                  </p>
-                                </div>
+                                      <div className="space-y-4">
+                                        <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 mb-2">
+                                          <Brain className="w-8 h-8" />
+                                        </div>
+                                        <h3 className="text-2xl font-bold text-gray-900">{selectedChallengeDay.questions[currentQuestionIndex].question}</h3>
+                                        <button onClick={() => speak(selectedChallengeDay.questions[currentQuestionIndex].question)} className="flex items-center gap-2 text-indigo-600 text-sm font-medium mx-auto hover:underline bg-white px-4 py-2 rounded-full border border-indigo-100 shadow-sm">
+                                          <Volume2 className="w-4 h-4" /> Nghe lại câu hỏi
+                                        </button>
+                                      </div>
+
+                                      <div className="w-full bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+                                        <p className="text-[10px] text-indigo-400 font-bold uppercase mb-2">Gợi ý cách trả lời</p>
+                                        <p className="text-sm text-indigo-600 italic font-medium">{selectedChallengeDay.questions[currentQuestionIndex].description}</p>
+                                      </div>
+
+                                      <div className="space-y-4 w-full">
+                                        <div className="flex justify-center gap-6 items-center">
+                                          <button 
+                                            onClick={isListening ? () => {
+                                              const text = accumulatedTranscriptRef.current.trim();
+                                              stopListening();
+                                              if (text) handleChallengeSpeakResult(text);
+                                            } : () => startListening(handleChallengeSpeakResult)}
+                                            className={`w-24 h-24 rounded-full flex flex-col items-center justify-center transition-all shadow-2xl ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-indigo-600 text-white hover:scale-105'}`}
+                                            disabled={isChallengeLoading}
+                                          >
+                                            {isListening ? <MicOff className="w-8 h-8 mb-1" /> : <Mic className="w-8 h-8 mb-1" />}
+                                            <span className="text-[10px] uppercase font-bold">{isListening ? 'Dừng' : 'Nói'}</span>
+                                          </button>
+                                          
+                                          {isListening && (
+                                            <button 
+                                              onClick={() => {
+                                                const text = accumulatedTranscriptRef.current.trim();
+                                                stopListening();
+                                                if (text) handleChallengeSpeakResult(text);
+                                              }}
+                                              className="bg-green-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold shadow-lg hover:bg-green-700 transition-all hover:scale-105"
+                                            >
+                                              <CheckCircle2 className="w-5 h-5" />
+                                              Đã nói xong
+                                            </button>
+                                          )}
+                                        </div>
+                                        <p className="text-sm font-medium text-gray-500 min-h-[20px]">
+                                          {isListening 
+                                            ? 'Hãy nói đi, tôi đang nghe bạn...' 
+                                            : isChallengeLoading 
+                                              ? 'Đang phân tích câu trả lời của bạn...' 
+                                              : 'Bấm Mic to để bắt đầu trả lời'}
+                                        </p>
+                                      </div>
+                                    </motion.div>
+                                  ) : (
+                                    <motion.div 
+                                      key="feedback"
+                                      initial={{ opacity: 0, scale: 0.95 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      className="space-y-6 w-full text-left"
+                                    >
+                                      <div className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-sm">
+                                        <div className="flex justify-between items-center mb-4">
+                                          <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">Feedback Từ AI</span>
+                                          <div className="flex items-center gap-1 font-bold text-indigo-600">
+                                            <Trophy className="w-4 h-4 text-yellow-500" />
+                                            Score: {currentQuestionFeedback.score}/10
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="space-y-4">
+                                          <div className="p-3 bg-gray-50 rounded-xl">
+                                             <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Bạn vừa nói:</p>
+                                             <p className="text-sm text-gray-700 italic">"{currentQuestionTranscript}"</p>
+                                          </div>
+                                          
+                                          <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <p className="text-[10px] text-green-600 font-bold uppercase">Phiên bản xịn hơn (Cố gắng nói lại theo cách này):</p>
+                                              <button onClick={() => speak(currentQuestionFeedback.improvedVersion)} className="p-2 bg-white rounded-full"><Volume2 className="w-4 h-4 text-green-600" /></button>
+                                            </div>
+                                            <p className="text-sm text-green-900 font-bold leading-relaxed">"{currentQuestionFeedback.improvedVersion}"</p>
+                                          </div>
+
+                                          <div className="p-3">
+                                            <p className="text-xs text-gray-600 leading-relaxed"><span className="font-bold text-indigo-600">Góp ý:</span> {currentQuestionFeedback.feedback}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <button 
+                                          onClick={() => {
+                                            setCurrentQuestionFeedback(null);
+                                            setCurrentQuestionTranscript(null);
+                                          }}
+                                          className="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-all"
+                                        >
+                                          <RotateCcw className="w-6 h-6 mb-1" />
+                                          <span className="text-xs font-bold">Tôi muốn nói lại câu này</span>
+                                        </button>
+                                        <button 
+                                          onClick={proceedToNextQuestion}
+                                          className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg transition-all"
+                                        >
+                                          Hài lòng, câu tiếp <ArrowRight className="w-5 h-5" />
+                                        </button>
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
                               </div>
                             </div>
                           )}
