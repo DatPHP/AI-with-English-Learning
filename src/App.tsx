@@ -225,6 +225,7 @@ export default function App() {
   const recognitionRef = React.useRef<any>(null);
   const silenceTimerRef = React.useRef<any>(null);
   const accumulatedTranscriptRef = React.useRef<string>("");
+  const latestLiveTranscriptRef = React.useRef<string>("");
 
   // Flashcard Learning State
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -523,13 +524,15 @@ export default function App() {
       recognitionRef.current.interimResults = true;
       
       accumulatedTranscriptRef.current = "";
+      latestLiveTranscriptRef.current = "";
+      setChatInput("");
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
       const resetSilenceTimer = () => {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
-          if (accumulatedTranscriptRef.current.trim()) {
-            const final = accumulatedTranscriptRef.current.trim();
+          const final = latestLiveTranscriptRef.current.trim();
+          if (final) {
             stopListening();
             if (onFinal) {
               onFinal(final);
@@ -539,7 +542,7 @@ export default function App() {
           } else {
             stopListening();
           }
-        }, 20000); // 20 seconds silence detection
+        }, 20000); // 20s of absolute silence
       };
 
       recognitionRef.current.onstart = () => {
@@ -549,18 +552,28 @@ export default function App() {
       };
 
       recognitionRef.current.onresult = (event: any) => {
+        // RESET TIMER ON EVERY SINGLE EVENT (Even interim noise/speech)
+        resetSilenceTimer(); 
+
+        let interimTranscript = "";
         let finalTranscript = "";
+
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
           }
         }
         
         if (finalTranscript) {
           accumulatedTranscriptRef.current += " " + finalTranscript;
-          setChatInput(accumulatedTranscriptRef.current.trim());
-          resetSilenceTimer(); // Reset timer upon hearing speech
         }
+
+        // Show live preview of what's being said
+        const currentLiveText = (accumulatedTranscriptRef.current + " " + interimTranscript).trim();
+        latestLiveTranscriptRef.current = currentLiveText;
+        setChatInput(currentLiveText);
       };
 
       recognitionRef.current.onerror = (event: any) => {
@@ -1448,7 +1461,7 @@ export default function App() {
                                         <div className="flex justify-center gap-6 items-center">
                                           <button 
                                             onClick={isListening ? () => {
-                                              const text = accumulatedTranscriptRef.current.trim();
+                                              const text = chatInput.trim(); 
                                               stopListening();
                                               if (text) handleChallengeSpeakResult(text);
                                             } : () => startListening(handleChallengeSpeakResult)}
@@ -1462,7 +1475,7 @@ export default function App() {
                                           {isListening && (
                                             <button 
                                               onClick={() => {
-                                                const text = accumulatedTranscriptRef.current.trim();
+                                                const text = chatInput.trim();
                                                 stopListening();
                                                 if (text) handleChallengeSpeakResult(text);
                                               }}
