@@ -211,6 +211,7 @@ export default function App() {
   const [currentFeedbacks, setCurrentFeedbacks] = useState<any[]>([]);
   const [isChallengeLoading, setIsChallengeLoading] = useState(false);
   const [challengeEndDate, setChallengeEndDate] = useState('');
+  const [challengeSessionDate, setChallengeSessionDate] = useState<string | null>(null);
   const [currentQuestionFeedback, setCurrentQuestionFeedback] = useState<any | null>(null);
   const [currentQuestionTranscript, setCurrentQuestionTranscript] = useState<string | null>(null);
 
@@ -744,6 +745,7 @@ export default function App() {
 
     try {
       await setDoc(doc(db, 'speakingChallenges', user!.uid), updatedProgress);
+      setChallengeSessionDate(new Date().toISOString());
       toast.success(`Chúc mừng! Bạn đã hoàn thành ngày thứ ${dayNum}.`);
       setChallengeStep('summary');
     } catch (e) {
@@ -1338,10 +1340,25 @@ export default function App() {
                               disabled={isLocked}
                               onClick={() => {
                                 setSelectedChallengeDay(item);
-                                setChallengeStep('learning');
-                                setCurrentQuestionIndex(0);
-                                setCurrentTranscript([]);
-                                setCurrentFeedbacks([]);
+                                if (isCompleted) {
+                                  // Find the latest attempt for this day
+                                  const attempts = challengeProgress.attempts.filter(a => a.day === item.day);
+                                  const latestAttempt = attempts[attempts.length - 1];
+                                  if (latestAttempt) {
+                                    setCurrentTranscript(latestAttempt.transcripts);
+                                    setCurrentFeedbacks(latestAttempt.aiFeedbacks.map(f => typeof f === 'string' ? JSON.parse(f) : f));
+                                    setChallengeSessionDate(latestAttempt.completedAt);
+                                    setChallengeStep('summary');
+                                  } else {
+                                    // Fallback if no attempt record found (shouldn't happen if isCompleted)
+                                    setChallengeStep('learning');
+                                  }
+                                } else {
+                                  setChallengeStep('learning');
+                                  setCurrentQuestionIndex(0);
+                                  setCurrentTranscript([]);
+                                  setCurrentFeedbacks([]);
+                                }
                               }}
                               className={`relative p-6 rounded-2xl border transition-all flex flex-col items-center justify-center gap-2 group ${isCompleted ? 'bg-green-50 border-green-200' : isLocked ? 'bg-gray-50 border-gray-100 opacity-60 cursor-not-allowed' : 'bg-white border-indigo-100 hover:border-indigo-400 hover:shadow-lg'}`}
                             >
@@ -1558,13 +1575,41 @@ export default function App() {
 
                           {challengeStep === 'summary' && (
                             <div className="space-y-8 max-w-3xl mx-auto">
-                              <div className="text-center">
-                                <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto mb-4" />
-                                <h3 className="text-2x font-bold text-gray-900">Hoàn thành Ngày {selectedChallengeDay.day}!</h3>
-                                <p className="text-gray-500 italic">"Bạn đã giỏi hơn bạn của ngày hôm qua 1% rồi đó."</p>
+                              <div className="bg-white rounded-3xl p-8 border border-indigo-100 shadow-sm text-center relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 opacity-50" />
+                                <div className="relative z-10">
+                                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                     <CheckCircle2 className="w-10 h-10 text-green-600" />
+                                  </div>
+                                  <h3 className="text-3xl font-black text-gray-900 mb-2">Kết Quả - Ngày {selectedChallengeDay.day}</h3>
+                                  <p className="text-gray-500 font-medium mb-6">Chủ đề: {selectedChallengeDay.title}</p>
+                                  
+                                  <div className="flex justify-center gap-8 mb-4">
+                                    <div className="text-center">
+                                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Điểm Trung Bình</p>
+                                      <p className="text-4xl font-black text-indigo-600">
+                                        {(currentFeedbacks.reduce((acc, curr) => acc + (typeof curr === 'string' ? JSON.parse(curr).score : curr.score), 0) / currentFeedbacks.length).toFixed(1)}
+                                        <span className="text-lg text-gray-400">/10</span>
+                                      </p>
+                                    </div>
+                                    <div className="w-px h-12 bg-gray-100" />
+                                    <div className="text-center">
+                                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Câu trả lời</p>
+                                      <p className="text-4xl font-black text-gray-900">{currentFeedbacks.length}</p>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gray-50 rounded-full border border-gray-100 text-xs text-gray-500">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    {challengeSessionDate ? `Hoàn thành lúc: ${new Date(challengeSessionDate).toLocaleTimeString()} - ${new Date(challengeSessionDate).toLocaleDateString()}` : 'Đang xử lý...'}
+                                  </div>
+                                </div>
                               </div>
 
                               <div className="space-y-6">
+                                <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                                  <FileText className="w-5 h-5 text-indigo-600" /> Chi tiết từng câu hỏi
+                                </h4>
                                 {currentFeedbacks.map((fb, idx) => {
                                    const fbData = typeof fb === 'string' ? JSON.parse(fb) : fb;
                                    return (
@@ -1599,7 +1644,26 @@ export default function App() {
                                 })}
                               </div>
 
-                              <Button onClick={() => setChallengeStep('dashboard')} className="w-full py-4 bg-green-600 hover:bg-green-700">Trở lại Dashboard</Button>
+                              <div className="flex flex-col sm:flex-row gap-4">
+                                <Button 
+                                  onClick={() => {
+                                    setChallengeStep('learning');
+                                    setCurrentQuestionIndex(0);
+                                    setCurrentTranscript([]);
+                                    setCurrentFeedbacks([]);
+                                  }} 
+                                  variant="secondary"
+                                  className="flex-1 py-4"
+                                >
+                                  Luyện tập lại ngày này
+                                </Button>
+                                <Button 
+                                  onClick={() => setChallengeStep('dashboard')} 
+                                  className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700"
+                                >
+                                  Trở lại Dashboard
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
