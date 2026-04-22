@@ -190,7 +190,10 @@ export default function App() {
   // Auth Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify' | 'reset'>('request');
+  const [otp, setOtp] = useState('');
 
   // App State
   const [inputText, setInputText] = useState('');
@@ -330,9 +333,51 @@ export default function App() {
         await setDoc(doc(db, 'users', cred.user.uid), newProfile);
         toast.success('Đăng ký thành công!');
       } else {
-        await sendPasswordResetEmail(auth, email);
-        toast.success('Đã gửi email đặt lại mật khẩu!');
-        setAuthMode('login');
+        // Custom Forgot Password Flow
+        if (forgotStep === 'request') {
+          const res = await fetch('/api/auth/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Lỗi gửi yêu cầu');
+          
+          if (data.dev) {
+            toast.info(`[Dev Mode] Mã OTP của bạn là: ${data.otp}`);
+          }
+          toast.success('Đã gửi mã xác thực tới email của bạn!');
+          setForgotStep('verify');
+        } else if (forgotStep === 'verify') {
+          const res = await fetch('/api/auth/verify-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, otp })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Mã xác thực không chính xác');
+          
+          toast.success('Xác thực thành công!');
+          setForgotStep('reset');
+        } else if (forgotStep === 'reset') {
+          if (password !== confirmPassword) throw new Error('Mật khẩu không khớp');
+          if (password.length < 6) throw new Error('Mật khẩu phải có ít nhất 6 ký tự');
+
+          const res = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, otp, newPassword: password })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Lỗi đặt lại mật khẩu');
+
+          toast.success('Đổi mật khẩu thành công! Hãy đăng nhập lại.');
+          setAuthMode('login');
+          setForgotStep('request');
+          setOtp('');
+          setPassword('');
+          setConfirmPassword('');
+        }
       }
     } catch (e: any) {
       toast.error(e.message);
@@ -782,13 +827,53 @@ export default function App() {
             {authMode === 'register' && (
               <Input label="Họ tên" value={name} onChange={setName} placeholder="Nguyễn Văn A" required />
             )}
-            <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="admin@gmail.com" required />
-            {authMode !== 'forgot' && (
-              <Input label="Mật khẩu" type="password" value={password} onChange={setPassword} placeholder="••••••••" required />
+            
+            {authMode === 'forgot' ? (
+              <div className="space-y-4">
+                {forgotStep === 'request' && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-500">Nhập email để nhận mã xác thực (OTP) gồm 4 chữ số.</p>
+                    <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="admin@gmail.com" required />
+                  </div>
+                )}
+                
+                {forgotStep === 'verify' && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-500">Mã xác thực đã được gửi tới <b>{email}</b>. Vui lòng nhập mã bên dưới.</p>
+                    <div className="flex flex-col gap-1.5 w-full">
+                      <label className="text-sm font-semibold text-gray-700">Mã OTP (4 số)</label>
+                      <input
+                        type="text"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="0000"
+                        className="px-4 py-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-center text-3xl font-black tracking-[1em] transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {forgotStep === 'reset' && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-green-600 font-medium">Xác thực thành công! Hãy tạo mật khẩu mới cho tài khoản của bạn.</p>
+                    <Input label="Mật khẩu mới" type="password" value={password} onChange={setPassword} placeholder="••••••••" required />
+                    <Input label="Xác nhận mật khẩu" type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="••••••••" required />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="admin@gmail.com" required />
+                <Input label="Mật khẩu" type="password" value={password} onChange={setPassword} placeholder="••••••••" required />
+              </>
             )}
             
-            <Button className="w-full" loading={loading}>
-              {authMode === 'login' ? 'Đăng nhập' : authMode === 'register' ? 'Đăng ký' : 'Gửi yêu cầu'}
+            <Button className="w-full h-12" loading={loading}>
+              {authMode === 'login' ? 'Đăng nhập' : 
+               authMode === 'register' ? 'Đăng ký' : 
+               forgotStep === 'request' ? 'Gửi mã xác thực' : 
+               forgotStep === 'verify' ? 'Tiếp tục' : 'Đặt lại mật khẩu'}
             </Button>
           </form>
 
@@ -796,10 +881,10 @@ export default function App() {
             {authMode === 'login' ? (
               <>
                 <button onClick={() => setAuthMode('register')} className="text-sm text-indigo-600 hover:underline">Chưa có tài khoản? Đăng ký</button>
-                <button onClick={() => setAuthMode('forgot')} className="text-sm text-gray-500 hover:underline">Quên mật khẩu?</button>
+                <button onClick={() => { setAuthMode('forgot'); setForgotStep('request'); }} className="text-sm text-gray-500 hover:underline">Quên mật khẩu?</button>
               </>
             ) : (
-              <button onClick={() => setAuthMode('login')} className="text-sm text-indigo-600 hover:underline">Quay lại đăng nhập</button>
+              <button onClick={() => { setAuthMode('login'); setForgotStep('request'); }} className="text-sm text-indigo-600 hover:underline font-medium">Quay lại đăng nhập</button>
             )}
           </div>
 
