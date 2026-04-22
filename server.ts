@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { db, auth, transporter } from "./src/lib/server-utils";
+import { getFirebaseAdmin, getNodemailer } from "./src/lib/server-utils";
 
 const app = express();
 app.use(express.json());
@@ -11,7 +11,9 @@ const PORT = 3000;
 app.post("/api/auth/send-otp", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required" });
-  if (!db) return res.status(500).json({ error: "Firebase Admin missing" });
+  
+  const { db, error } = getFirebaseAdmin();
+  if (!db) return res.status(500).json({ error: `Firebase Admin missing: ${error}` });
 
   try {
     const userDocs = await db.collection("users").where("email", "==", email).get();
@@ -25,6 +27,7 @@ app.post("/api/auth/send-otp", async (req, res) => {
     await db.collection("verificationCodes").doc(email).set({ otp, expiresAt, email });
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const transporter = getNodemailer();
       const mailOptions = {
         from: `"EngMaster AI" <${process.env.SMTP_USER}>`,
         to: email,
@@ -54,7 +57,8 @@ app.post("/api/auth/send-otp", async (req, res) => {
 
 app.post("/api/auth/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
-  if (!db) return res.status(500).json({ error: "Server misconfigured" });
+  const { db, error } = getFirebaseAdmin();
+  if (!db) return res.status(500).json({ error: `Server misconfigured: ${error}` });
 
   try {
     const doc = await db.collection("verificationCodes").doc(email).get();
@@ -72,7 +76,8 @@ app.post("/api/auth/verify-otp", async (req, res) => {
 
 app.post("/api/auth/reset-password", async (req, res) => {
   const { email, otp, newPassword } = req.body;
-  if (!db || !auth) return res.status(500).json({ error: "Server misconfigured" });
+  const { db, auth, error } = getFirebaseAdmin();
+  if (!db || !auth) return res.status(500).json({ error: `Server misconfigured: ${error}` });
 
   try {
     const otpDoc = await db.collection("verificationCodes").doc(email).get();
