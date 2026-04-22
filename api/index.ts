@@ -1,11 +1,8 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
-import path from "path";
-import { db, auth, transporter } from "./src/lib/server-utils";
+import { db, auth, transporter } from "../src/lib/server-utils";
 
 const app = express();
 app.use(express.json());
-const PORT = 3000;
 
 // API Routes
 app.post("/api/auth/send-otp", async (req, res) => {
@@ -37,14 +34,13 @@ app.post("/api/auth/send-otp", async (req, res) => {
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1f2937;">
               ${otp}
             </div>
-            <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">Mã này có hiệu lực trong 10 phút. Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.</p>
+            <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">Mã này có hiệu lực trong 10 phút.</p>
           </div>
         `,
       };
       await transporter.sendMail(mailOptions);
       res.json({ message: "OTP sent successfully" });
     } else {
-      console.log(`[DEV MODE] OTP for ${email} is: ${otp}`);
       res.json({ message: "OTP sent to console (Dev Mode)", dev: true, otp });
     }
   } catch (error: any) {
@@ -89,21 +85,4 @@ app.post("/api/auth/reset-password", async (req, res) => {
   }
 });
 
-// Vite middleware for development
-if (process.env.NODE_ENV !== "production") {
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
-} else {
-  const distPath = path.join(process.cwd(), "dist");
-  app.use(express.static(distPath));
-  app.get("*all", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-}
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+export default app;
