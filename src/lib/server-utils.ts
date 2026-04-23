@@ -1,4 +1,6 @@
-import admin from "firebase-admin";
+import { initializeApp, getApps, getApp, cert, App } from "firebase-admin/app";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
+import { getAuth, Auth } from "firebase-admin/auth";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
@@ -8,9 +10,10 @@ dotenv.config();
 // and to catch errors more gracefully.
 
 export function getFirebaseAdmin() {
-  let db: admin.firestore.Firestore | null = null;
-  let auth: admin.auth.Auth | null = null;
+  let db: Firestore | null = null;
+  let auth: Auth | null = null;
   let error: string | null = null;
+
 
   try {
     const saKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -46,23 +49,29 @@ export function getFirebaseAdmin() {
     }
 
     // 4. Initialize Firebase Admin
-    if (admin.apps.length === 0) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+    let app: App;
+    const apps = getApps();
+    if (apps.length === 0) {
+      app = initializeApp({
+        credential: cert(serviceAccount)
       });
       console.log("[FIREBASE] Admin SDK Initialized for project:", serviceAccount.project_id);
+    } else {
+      app = getApp();
     }
+
     
     // 5. Connect to Firestore (Supporting custom Database ID)
     const databaseId = process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID;
     if (databaseId && databaseId !== "(default)") {
-      db = admin.firestore(databaseId);
+      db = getFirestore(app, databaseId);
       console.log("[FIREBASE] Using custom database:", databaseId);
     } else {
-      db = admin.firestore();
+      db = getFirestore(app);
     }
     
-    auth = admin.auth();
+    auth = getAuth(app);
+
   } catch (e: any) {
     console.error("[FIREBASE] Initialization Error:", e.message);
     error = e.message;
