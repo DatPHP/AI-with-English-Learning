@@ -15,47 +15,56 @@ export function getFirebaseAdmin() {
   try {
     const saKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     if (!saKey) {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing from environment variables.");
+      throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing.");
     }
 
-    console.log(`[AUTH] SaKey detected, length: ${saKey.length} characters.`);
-
-    if (!saKey.trim().startsWith('{')) {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY must be the FULL JSON CONTENT (starting with '{'), not just the email or ID.");
-    }
-
-    let serviceAccount;
-    try {
-      // 1. Try direct parse
-      serviceAccount = JSON.parse(saKey);
-    } catch (e1) {
+    let serviceAccount: any;
+    
+    // 1. Handle if it's already an object (rare but possible in some runtimes)
+    if (typeof saKey === 'object') {
+      serviceAccount = saKey;
+    } else {
+      const trimmedKey = saKey.trim();
+      
+      // 2. Handle double quoting or literal string issues
       try {
-        // 2. Try cleaning quotes (common Vercel issue)
-        const cleaned = saKey.trim().replace(/^['"]|['"]$/g, '');
-        serviceAccount = JSON.parse(cleaned);
-      } catch (e2) {
-        throw new Error(`JSON Parse Error: ${saKey.substring(0, 20)}... is not a valid JSON. Check for hidden characters or improper quoting.`);
+        serviceAccount = JSON.parse(trimmedKey);
+      } catch (e1) {
+        // Try cleaning surrounding quotes if it's a stringified JSON inside a string
+        const cleaned = trimmedKey.replace(/^['"]|['"]$/g, '');
+        try {
+          serviceAccount = JSON.parse(cleaned);
+        } catch (e2) {
+          throw new Error(`Failed to parse Service Account JSON. Ensure it starts with '{'. First 20 chars: ${trimmedKey.substring(0, 20)}`);
+        }
       }
     }
 
-    // 3. Fix Private Key formatting - Handle literal \n, escaped \\n, and actual newlines
-    if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key
-        .replace(/\\n/g, '\n')
-        .replace(/\n/g, '\n'); // Ensure it stays as newline
+    // 3. Fix Private Key formatting
+    if (serviceAccount && serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
 
-    // 4. Initialize or reuse
+    // 4. Initialize Firebase Admin
     if (admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
+      console.log("[FIREBASE] Admin SDK Initialized for project:", serviceAccount.project_id);
     }
     
-    db = admin.firestore();
+    // 5. Connect to Firestore (Supporting custom Database ID)
+    const databaseId = process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID;
+    if (databaseId && databaseId !== "(default)") {
+      db = admin.firestore(databaseId);
+      console.log("[FIREBASE] Using custom database:", databaseId);
+    } else {
+      db = admin.firestore();
+    }
+    
     auth = admin.auth();
   } catch (e: any) {
-    console.error("Firebase Admin Error:", e.message);
+    console.error("[FIREBASE] Initialization Error:", e.message);
     error = e.message;
   }
 
@@ -63,13 +72,19 @@ export function getFirebaseAdmin() {
 }
 
 export function getNodemailer() {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS?.replace(/\s/g, ''); // Remove spaces from App Password
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = parseInt(process.env.SMTP_PORT || "587");
+  
+  // Note: secure: true is only for port 465. For 587 it should be false (STARTTLS).
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
+    host,
+    port,
+    secure,
+    auth: { user, pass },
   });
 }
+

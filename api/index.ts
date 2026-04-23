@@ -9,12 +9,20 @@ app.get("/api/health", (req, res) => {
   const { db, error } = getFirebaseAdmin();
   res.json({
     status: "ok",
+    timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
     firebase: db ? "initialized" : "failed",
     firebaseError: error,
-    smtp: process.env.SMTP_USER ? "configured" : "missing"
+    databaseId: process.env.VITE_FIREBASE_DATABASE_ID || "(default)",
+    smtp: {
+      configured: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
+      user: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 3)}***` : "missing",
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: process.env.SMTP_PORT || "587"
+    }
   });
 });
+
 
 // API Routes
 app.post("/api/auth/send-otp", async (req, res) => {
@@ -65,8 +73,10 @@ app.post("/api/auth/send-otp", async (req, res) => {
       res.json({ message: "OTP sent to console (Dev Mode)", dev: true, otp });
     }
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("[AUTH] Error in send-otp:", error);
+    res.status(500).json({ error: error.message, code: "SEND_OTP_ERROR" });
   }
+
 });
 
 app.post("/api/auth/verify-otp", async (req, res) => {
@@ -84,8 +94,10 @@ app.post("/api/auth/verify-otp", async (req, res) => {
     }
     res.json({ message: "OTP verified" });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("[AUTH] Error in verify-otp:", error);
+    res.status(500).json({ error: error.message, code: "VERIFY_OTP_ERROR" });
   }
+
 });
 
 app.post("/api/auth/reset-password", async (req, res) => {
@@ -104,8 +116,10 @@ app.post("/api/auth/reset-password", async (req, res) => {
     await db.collection("verificationCodes").doc(email).delete();
     res.json({ message: "Password reset successful" });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("[AUTH] Error in reset-password:", error);
+    res.status(500).json({ error: error.message, code: "RESET_PASSWORD_ERROR" });
   }
+
 });
 
 export default app;
