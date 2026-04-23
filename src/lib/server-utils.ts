@@ -18,6 +18,12 @@ export function getFirebaseAdmin() {
       throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing from environment variables.");
     }
 
+    console.log(`[AUTH] SaKey detected, length: ${saKey.length} characters.`);
+
+    if (!saKey.trim().startsWith('{')) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY must be the FULL JSON CONTENT (starting with '{'), not just the email or ID.");
+    }
+
     let serviceAccount;
     try {
       // 1. Try direct parse
@@ -32,9 +38,11 @@ export function getFirebaseAdmin() {
       }
     }
 
-    // 3. Fix Private Key formatting
+    // 3. Fix Private Key formatting - Handle literal \n, escaped \\n, and actual newlines
     if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      serviceAccount.private_key = serviceAccount.private_key
+        .replace(/\\n/g, '\n')
+        .replace(/\n/g, '\n'); // Ensure it stays as newline
     }
 
     // 4. Initialize or reuse

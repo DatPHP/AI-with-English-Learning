@@ -4,6 +4,18 @@ import { getFirebaseAdmin, getNodemailer } from "../src/lib/server-utils";
 const app = express();
 app.use(express.json());
 
+// Health Check
+app.get("/api/health", (req, res) => {
+  const { db, error } = getFirebaseAdmin();
+  res.json({
+    status: "ok",
+    environment: process.env.NODE_ENV,
+    firebase: db ? "initialized" : "failed",
+    firebaseError: error,
+    smtp: process.env.SMTP_USER ? "configured" : "missing"
+  });
+});
+
 // API Routes
 app.post("/api/auth/send-otp", async (req, res) => {
   const { email } = req.body;

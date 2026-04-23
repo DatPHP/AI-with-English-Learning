@@ -7,6 +7,16 @@ const app = express();
 app.use(express.json());
 const PORT = 3000;
 
+// Health Check
+app.get("/api/health", (req, res) => {
+  const { db, error } = getFirebaseAdmin();
+  res.json({
+    status: "ok",
+    firebase: db ? "initialized" : "failed",
+    firebaseError: error
+  });
+});
+
 // API Routes
 app.post("/api/auth/send-otp", async (req, res) => {
   const { email } = req.body;
