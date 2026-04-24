@@ -65,6 +65,8 @@ import { analyzeInput, analyzeDocument, getChatResponse, getChatSuggestion, eval
 import { Flashcard, GrammarBlog, UserProfile, ChatMessage, SpeakingChallengeProgress, DailyChallengeAttempt } from './types';
 import mammoth from 'mammoth';
 import { speakingChallengeData, ChallengeDay } from './data/challengeData';
+import { playHighQualityAudio } from './services/voiceService';
+import { SpeakButton } from './components/SpeakButton';
 
 // Tiptap Imports
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -136,17 +138,8 @@ const TiptapViewer = ({ content }: { content: string }) => {
 };
 
 const speak = (text: string) => {
-  if ('speechSynthesis' in window) {
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-    
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.9; // Slightly slower for clarity
-    window.speechSynthesis.speak(utterance);
-  } else {
-    toast.error("Trình duyệt của bạn không hỗ trợ phát âm.");
-  }
+  if (!text) return;
+  playHighQualityAudio(text);
 };
 
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, loading = false }: any) => {
@@ -1099,15 +1092,10 @@ export default function App() {
                           <div className="absolute inset-0 backface-hidden bg-indigo-50 rounded-2xl flex flex-col items-center justify-center p-6 text-center">
                             <div className="flex items-center gap-3 mb-2">
                               <h3 className="text-4xl font-bold text-indigo-900">{flashcards[currentCardIndex].word}</h3>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  speak(flashcards[currentCardIndex].word);
-                                }}
-                                className="p-2 bg-white rounded-full shadow-sm hover:bg-indigo-100 text-indigo-600 transition-colors"
-                              >
-                                <Volume2 className="w-5 h-5" />
-                              </button>
+                              <SpeakButton 
+                                text={flashcards[currentCardIndex].word}
+                                className="p-2 shadow-sm rounded-full bg-white text-indigo-600"
+                              />
                             </div>
                             <p className="text-indigo-500 font-mono">{flashcards[currentCardIndex].phonetic}</p>
                             <p className="mt-4 text-xs text-indigo-400 font-medium uppercase tracking-widest">Click để xem nghĩa</p>
@@ -1151,15 +1139,10 @@ export default function App() {
                                 <h4 className="font-bold text-gray-900">{card.word}</h4>
                                 <p className="text-xs text-gray-500 font-mono">{card.phonetic}</p>
                               </div>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  speak(card.word);
-                                }}
-                                className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all"
-                              >
-                                <Volume2 className="w-4 h-4" />
-                              </button>
+                              <SpeakButton 
+                                text={card.word}
+                                className="bg-transparent text-indigo-400 p-1.5"
+                              />
                             </div>
                             <button onClick={() => deleteItem('vocabulary', card.id!)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all">
                               <Trash2 className="w-4 h-4" />
@@ -1215,9 +1198,11 @@ export default function App() {
                       <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>
                         <p className="text-sm leading-relaxed">{msg.text}</p>
                         {msg.role === 'model' && (
-                          <button onClick={() => speak(msg.text)} className="mt-1 text-[10px] opacity-60 hover:opacity-100 flex items-center gap-1">
-                            <Volume2 className="w-3 h-3" /> Nghe lại
-                          </button>
+                          <SpeakButton 
+                            text={msg.text}
+                            label="Nghe lại"
+                            className="mt-1 bg-transparent text-[10px] opacity-60 hover:opacity-100 p-0 text-gray-500"
+                          />
                         )}
                       </div>
                     </motion.div>

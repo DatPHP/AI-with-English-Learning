@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { getFirebaseAdmin, getNodemailer } from "./src/lib/server-utils";
+import { elevenLabsService } from "./src/services/elevenLabsService";
 
 const app = express();
 app.use(express.json());
@@ -99,6 +100,35 @@ app.post("/api/auth/reset-password", async (req, res) => {
     await auth.updateUser(userRecord.uid, { password: newPassword });
     await db.collection("verificationCodes").doc(email).delete();
     res.json({ message: "Password reset successful" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/tts", async (req, res) => {
+  const { text, voiceId } = req.body;
+  if (!text) return res.status(400).json({ error: "Text is required" });
+
+  try {
+    const audioStream = await elevenLabsService.textToSpeech(text, voiceId);
+    
+    // Set headers for audio streaming
+    res.setHeader("Content-Type", "audio/mpeg");
+    
+    // Pipe the stream to the response
+    // ElevenLabs SDK returns a stream-like object that can be converted to buffer if needed
+    // or just written direct if it's a Buffer/Readable
+    if (audioStream instanceof Buffer) {
+      res.send(audioStream);
+    } else {
+      // Handle as stream
+      const chunks = [];
+      for await (const chunk of audioStream as any) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      res.send(buffer);
+    }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
