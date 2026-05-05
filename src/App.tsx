@@ -57,7 +57,8 @@ import {
   CheckCircle2,
   Lock,
   ArrowRight,
-  Target
+  Target,
+  Headphones
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
@@ -67,6 +68,7 @@ import mammoth from 'mammoth';
 import { speakingChallengeData, ChallengeDay } from './data/challengeData';
 import { playHighQualityAudio } from './services/voiceService';
 import { SpeakButton } from './components/SpeakButton';
+import { ShadowingModule } from './components/ShadowingModule';
 
 // Tiptap Imports
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -195,7 +197,7 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [grammarBlogs, setGrammarBlogs] = useState<GrammarBlog[]>([]);
-  const [activeTab, setActiveTab] = useState<'input' | 'vocabulary' | 'grammar' | 'chat' | 'challenge'>('input');
+  const [activeTab, setActiveTab] = useState<'input' | 'vocabulary' | 'grammar' | 'chat' | 'challenge' | 'shadowing'>('input');
   const [selectedBlog, setSelectedBlog] = useState<GrammarBlog | null>(null);
 
   // Challenge State
@@ -946,6 +948,13 @@ export default function App() {
           >
             <Trophy className="w-5 h-5" />
             Thử thách 30 ngày
+          </button>
+          <button 
+            onClick={() => setActiveTab('shadowing')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'shadowing' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Headphones className="w-5 h-5" />
+            Shadowing Pro
           </button>
           <button 
             onClick={() => setActiveTab('chat')}
@@ -1741,6 +1750,17 @@ export default function App() {
                     )}
                   </div>
                 )}
+              </motion.div>
+            )}
+
+            {activeTab === 'shadowing' && (
+              <motion.div
+                key="shadowing"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <ShadowingModule />
               </motion.div>
             )}
           </AnimatePresence>

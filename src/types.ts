@@ -59,3 +59,24 @@ export interface SpeakingChallengeProgress {
   lastCompletedDay: number;
   attempts: DailyChallengeAttempt[];
 }
+
+export interface ShadowingSentence {
+  id: string;
+  text: string;
+  translation: string;
+}
+
+export interface ShadowingTopic {
+  id: string;
+  title: string;
+  level: 'Basic' | 'Intermediate' | 'Advanced';
+  category: string;
+  description: string;
+  sentences: ShadowingSentence[];
+}
+
+export interface ShadowingProgress {
+  topicId: string;
+  completedSentences: string[];
+  lastAccessed: number;
+}
