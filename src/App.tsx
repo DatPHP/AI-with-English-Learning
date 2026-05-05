@@ -828,7 +828,7 @@ export default function App() {
                 {forgotStep === 'request' && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-500">Nhập email để nhận mã xác thực (OTP) gồm 4 chữ số.</p>
-                    <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="admin@gmail.com" required />
+                    <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="email@example.com" required />
                   </div>
                 )}
                 
@@ -859,7 +859,7 @@ export default function App() {
               </div>
             ) : (
               <>
-                <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="admin@gmail.com" required />
+                <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="email@example.com" required />
                 <Input label="Mật khẩu" type="password" value={password} onChange={setPassword} placeholder="••••••••" required />
               </>
             )}
@@ -883,9 +883,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-            <p className="text-xs text-gray-400">Tài khoản mặc định: admin@gmail.com / admin12345</p>
-          </div>
+
         </motion.div>
       </div>
     );
