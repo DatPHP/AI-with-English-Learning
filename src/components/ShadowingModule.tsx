@@ -25,6 +25,7 @@ export const ShadowingModule: React.FC = () => {
   const [selectedTopic, setSelectedTopic] = useState<ShadowingTopic | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
+  const isPlayingAllRef = useRef(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(true);
@@ -48,6 +49,7 @@ export const ShadowingModule: React.FC = () => {
       setRecordedUrl(null);
     } else {
       setIsPlayingAll(false);
+      isPlayingAllRef.current = false;
     }
   };
 
@@ -71,15 +73,22 @@ export const ShadowingModule: React.FC = () => {
   const startAutoPlay = async () => {
     if (!selectedTopic) return;
     setIsPlayingAll(true);
+    isPlayingAllRef.current = true;
     
     for (let i = currentIndex; i < selectedTopic.sentences.length; i++) {
-        if (!isPlayingAll && i !== currentIndex) break; // Check if stopped (though state might be stale in loop)
-        // Note: Using a ref for isPlayingAll would be safer for immediate stop
+        if (!isPlayingAllRef.current) break; // Check correct ref value
         setCurrentIndex(i);
         await playSentence(i);
+        if (!isPlayingAllRef.current) break; // Check again after playback
         await new Promise(r => setTimeout(r, 1000)); // Gap between sentences
     }
     setIsPlayingAll(false);
+    isPlayingAllRef.current = false;
+  };
+
+  const stopAutoPlay = () => {
+    setIsPlayingAll(false);
+    isPlayingAllRef.current = false;
   };
 
   const startRecording = async () => {
@@ -109,8 +118,10 @@ export const ShadowingModule: React.FC = () => {
     if (mediaRecorder.current && isRecording) {
       mediaRecorder.current.stop();
       setIsRecording(false);
-      // Stop all tracks
-      mediaRecorder.current.stream.getTracks().forEach(track => track.stop());
+      // Stop all tracks to turn off the browser recording indicator
+      if (mediaRecorder.current.stream) {
+        mediaRecorder.current.stream.getTracks().forEach(track => track.stop());
+      }
     }
   };
 
@@ -296,6 +307,14 @@ export const ShadowingModule: React.FC = () => {
                     className={`text-sm font-bold flex items-center gap-2 transition-colors ${showTranslation ? 'text-indigo-600' : 'text-gray-400'}`}
                 >
                     <MessageSquare className="w-4 h-4" /> {showTranslation ? "Ẩn dịch" : "Hiện dịch"}
+                </button>
+                <div className="w-px h-4 bg-gray-300"></div>
+                <button 
+                    onClick={isPlayingAll ? stopAutoPlay : startAutoPlay}
+                    className={`text-sm font-bold flex items-center gap-2 transition-colors ${isPlayingAll ? 'text-red-600' : 'text-indigo-600'}`}
+                >
+                    {isPlayingAll ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4" />} 
+                    {isPlayingAll ? "Stop Auto" : "Auto Play"}
                 </button>
             </div>
 
