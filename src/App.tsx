@@ -1434,8 +1434,8 @@ export default function App() {
                                   const attempts = challengeProgress.attempts.filter(a => a.day === item.day);
                                   const latestAttempt = attempts[attempts.length - 1];
                                   if (latestAttempt) {
-                                    setCurrentTranscript(latestAttempt.transcripts);
-                                    setCurrentFeedbacks(latestAttempt.aiFeedbacks.map(f => typeof f === 'string' ? JSON.parse(f) : f));
+                                    setCurrentTranscript(latestAttempt.transcripts || []);
+                                    setCurrentFeedbacks((latestAttempt.aiFeedbacks || []).map(f => typeof f === 'string' ? JSON.parse(f) : f));
                                     setChallengeSessionDate(latestAttempt.completedAt);
                                     setChallengeStep('summary');
                                   } else {
@@ -1652,11 +1652,19 @@ export default function App() {
                                           <div className="grid grid-cols-2 gap-4">
                                             <div className="p-3 rounded-2xl bg-blue-50 border border-blue-100">
                                               <p className="text-[10px] font-black text-blue-500 uppercase mb-1">Ngữ pháp</p>
-                                              <p className="text-sm font-bold text-blue-800">{currentQuestionFeedback.feedback.grammar.score}/10</p>
+                                              <p className="text-sm font-bold text-blue-800">
+                                                {typeof currentQuestionFeedback.feedback === 'object' 
+                                                  ? currentQuestionFeedback.feedback.grammar?.score ?? 0 
+                                                  : currentQuestionFeedback.score ?? 0}/10
+                                              </p>
                                             </div>
                                             <div className="p-3 rounded-2xl bg-purple-50 border border-purple-100">
                                               <p className="text-[10px] font-black text-purple-500 uppercase mb-1">Từ vựng</p>
-                                              <p className="text-sm font-bold text-purple-800">{currentQuestionFeedback.feedback.vocabulary.score}/10</p>
+                                              <p className="text-sm font-bold text-purple-800">
+                                                {typeof currentQuestionFeedback.feedback === 'object' 
+                                                  ? currentQuestionFeedback.feedback.vocabulary?.score ?? 0 
+                                                  : currentQuestionFeedback.score ?? 0}/10
+                                              </p>
                                             </div>
                                           </div>
                                           
@@ -1668,16 +1676,20 @@ export default function App() {
 
                                             <div className="space-y-2">
                                               <p className="text-xs font-black text-gray-400 uppercase">Phản hồi sư phạm</p>
-                                              <p className="text-sm text-gray-700 leading-relaxed font-medium">{currentQuestionFeedback.feedback.overall}</p>
-                                              {(currentQuestionFeedback.feedback.grammar.notes || currentQuestionFeedback.feedback.vocabulary.notes) && (
+                                              <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                                                {typeof currentQuestionFeedback.feedback === 'object' 
+                                                  ? currentQuestionFeedback.feedback.overall 
+                                                  : currentQuestionFeedback.feedback}
+                                              </p>
+                                              {typeof currentQuestionFeedback.feedback === 'object' && (currentQuestionFeedback.feedback.grammar?.notes || currentQuestionFeedback.feedback.vocabulary?.notes) && (
                                                 <ul className="text-xs text-gray-500 space-y-1 mt-2 list-disc pl-4 italic">
-                                                  {currentQuestionFeedback.feedback.grammar.notes && <li>{currentQuestionFeedback.feedback.grammar.notes}</li>}
-                                                  {currentQuestionFeedback.feedback.vocabulary.notes && <li>{currentQuestionFeedback.feedback.vocabulary.notes}</li>}
+                                                  {currentQuestionFeedback.feedback.grammar?.notes && <li>{currentQuestionFeedback.feedback.grammar.notes}</li>}
+                                                  {currentQuestionFeedback.feedback.vocabulary?.notes && <li>{currentQuestionFeedback.feedback.vocabulary.notes}</li>}
                                                 </ul>
                                               )}
                                             </div>
 
-                                            {currentQuestionFeedback.feedback.pronunciation_tip && (
+                                            {typeof currentQuestionFeedback.feedback === 'object' && currentQuestionFeedback.feedback.pronunciation_tip && (
                                               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 flex gap-3 items-start">
                                                 <Volume2 className="w-5 h-5 text-amber-600 shrink-0 mt-1" />
                                                 <div>
@@ -1744,7 +1756,9 @@ export default function App() {
                                     <div className="text-center">
                                       <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Điểm Trung Bình</p>
                                       <p className="text-4xl font-black text-indigo-600">
-                                        {(currentFeedbacks.reduce((acc, curr) => acc + (typeof curr === 'string' ? JSON.parse(curr).score : curr.score), 0) / currentFeedbacks.length).toFixed(1)}
+                                        {(currentFeedbacks.length > 0 
+                                          ? currentFeedbacks.reduce((acc, curr) => acc + (typeof curr === 'string' ? JSON.parse(curr).score : (curr.score || 0)), 0) / currentFeedbacks.length 
+                                          : 0).toFixed(1)}
                                         <span className="text-lg text-gray-400">/10</span>
                                       </p>
                                     </div>
@@ -1785,11 +1799,11 @@ export default function App() {
                                        <div className="grid grid-cols-2 gap-3">
                                           <div className="p-3 bg-blue-50/50 rounded-2xl border border-blue-50 text-left">
                                              <p className="text-[10px] font-black text-blue-400 uppercase">Grammar</p>
-                                             <p className="text-lg font-black text-blue-700">{fbData.feedback.grammar.score}<span className="text-xs text-blue-400">/10</span></p>
+                                             <p className="text-lg font-black text-blue-700">{typeof fbData.feedback === 'object' ? fbData.feedback.grammar?.score ?? 0 : fbData.score ?? 0}<span className="text-xs text-blue-400">/10</span></p>
                                           </div>
                                           <div className="p-3 bg-purple-50/50 rounded-2xl border border-purple-50 text-left">
                                              <p className="text-[10px] font-black text-purple-400 uppercase">Vocabulary</p>
-                                             <p className="text-lg font-black text-purple-700">{fbData.feedback.vocabulary.score}<span className="text-xs text-purple-400">/10</span></p>
+                                             <p className="text-lg font-black text-purple-700">{typeof fbData.feedback === 'object' ? fbData.feedback.vocabulary?.score ?? 0 : fbData.score ?? 0}<span className="text-xs text-purple-400">/10</span></p>
                                           </div>
                                        </div>
 
@@ -1808,7 +1822,7 @@ export default function App() {
                                           </div>
 
                                           <div className="p-5 bg-indigo-50/30 rounded-2xl border border-indigo-50">
-                                            <p className="text-sm text-gray-800 font-medium leading-relaxed">{fbData.feedback.overall}</p>
+                                            <p className="text-sm text-gray-800 font-medium leading-relaxed">{typeof fbData.feedback === 'object' ? fbData.feedback.overall : fbData.feedback}</p>
                                             <div className="mt-3 flex flex-wrap gap-2">
                                               <span className="text-[10px] bg-white border border-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-bold">#PedagogicalFeedback</span>
                                               <span className="text-[10px] bg-white border border-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-bold">#SpeakingAnalysis</span>
