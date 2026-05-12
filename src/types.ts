@@ -44,11 +44,22 @@ export interface ChatSession {
   createdAt: string;
 }
 
+export interface ChallengeAIFeedback {
+  feedback: {
+    overall: string;
+    grammar: { score: number; notes: string };
+    vocabulary: { score: number; notes: string };
+    pronunciation_tip: string;
+  };
+  improvedVersion: string;
+  score: number;
+}
+
 export interface DailyChallengeAttempt {
   day: number;
   completedAt: string;
   transcripts: string[]; // Answers for each question
-  aiFeedbacks: string[]; // Feedback for each answer
+  aiFeedbacks: (string | ChallengeAIFeedback)[]; // Feedback for each answer
 }
 
 export interface SpeakingChallengeProgress {
