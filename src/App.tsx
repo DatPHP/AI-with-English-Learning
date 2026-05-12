@@ -583,13 +583,13 @@ export default function App() {
           } else {
             stopListening();
           }
-        }, 20000); // 20s of absolute silence
+        }, 5000); // 5s of absolute silence
       };
 
       recognitionRef.current.onstart = () => {
         setIsListening(true);
         resetSilenceTimer();
-        toast.info("Đang nghe... AI sẽ chờ 60s nếu bạn im lặng mới phản hồi.");
+        toast.info("Đang nghe... AI sẽ tự động phân tích sau 5 giây im lặng.");
       };
 
       recognitionRef.current.onresult = (event: any) => {
@@ -727,24 +727,28 @@ export default function App() {
     }
   };
 
-  const handleChallengeSpeakResult = async (transcript: string) => {
-    if (!selectedChallengeDay) return;
+  const handleChallengeSpeakResult = (transcript: string) => {
+    if (!selectedChallengeDay || !transcript.trim()) return;
     setCurrentQuestionTranscript(transcript);
-    // Instead of auto-submitting, we let the user review it.
+    // Explicitly call submission logic
+    submitChallengeAnswer(transcript);
   };
 
-  const submitChallengeAnswer = async () => {
-    if (!selectedChallengeDay || !currentQuestionTranscript) return;
+  const submitChallengeAnswer = async (manualTranscript?: string) => {
+    const textToAnalyze = manualTranscript || currentQuestionTranscript;
+    if (!selectedChallengeDay || !textToAnalyze) return;
+    
     setIsChallengeLoading(true);
     try {
       const question = selectedChallengeDay.questions[currentQuestionIndex].question;
       const result = await evaluateChallengeAnswer(
         selectedChallengeDay.title,
         question,
-        currentQuestionTranscript,
+        textToAnalyze,
         selectedChallengeDay.keywords
       );
       
+      setCurrentQuestionTranscript(textToAnalyze);
       setCurrentQuestionFeedback(result);
     } catch (e) {
       toast.error("Lỗi phân tích hội thoại.");
@@ -1583,10 +1587,13 @@ export default function App() {
                                           {isListening && (
                                             <button 
                                               onClick={() => {
+                                                const finalTxt = latestLiveTranscriptRef.current.trim();
                                                 stopListening();
-                                                // The onEnd of recognition will have already called handleChallengeSpeakResult 
-                                                // via the startListening callback, but we need to ensure it triggers submission.
-                                                // However, we rely on the handleChallengeSpeakResult being called with final text.
+                                                if (finalTxt) {
+                                                  handleChallengeSpeakResult(finalTxt);
+                                                } else {
+                                                  toast.error("Vui lòng nói gì đó trước khi phân tích.");
+                                                }
                                               }}
                                               className="bg-green-600 text-white px-8 py-4 rounded-2xl flex items-center gap-3 font-black shadow-lg hover:bg-green-700 transition-all hover:scale-105 animate-in fade-in zoom-in"
                                             >
