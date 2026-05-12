@@ -1569,9 +1569,7 @@ export default function App() {
                                       <div className="space-y-4 w-full">
                                         <div className="flex justify-center gap-6 items-center">
                                           <button 
-                                            onClick={isListening ? () => {
-                                              stopListening();
-                                            } : () => {
+                                            onClick={isListening ? stopListening : () => {
                                               setChatInput(""); 
                                               startListening(handleChallengeSpeakResult);
                                             }}
@@ -1579,25 +1577,59 @@ export default function App() {
                                             disabled={isChallengeLoading}
                                           >
                                             {isListening ? <MicOff className="w-10 h-10 mb-1" /> : <Mic className="w-10 h-10 mb-1" />}
-                                            <span className="text-[11px] uppercase font-black tracking-tighter">{isListening ? 'STOP' : 'SPEAK'}</span>
+                                            <span className="text-[11px] uppercase font-black tracking-tighter">{isListening ? 'DỪNG' : 'NÓI'}</span>
                                           </button>
+
+                                          {isListening && (
+                                            <button 
+                                              onClick={() => {
+                                                stopListening();
+                                                // The onEnd of recognition will have already called handleChallengeSpeakResult 
+                                                // via the startListening callback, but we need to ensure it triggers submission.
+                                                // However, we rely on the handleChallengeSpeakResult being called with final text.
+                                              }}
+                                              className="bg-green-600 text-white px-8 py-4 rounded-2xl flex items-center gap-3 font-black shadow-lg hover:bg-green-700 transition-all hover:scale-105 animate-in fade-in zoom-in"
+                                            >
+                                              <CheckCircle2 className="w-6 h-6" />
+                                              XONG & PHÂN TÍCH
+                                            </button>
+                                          )}
                                         </div>
                                         
-                                        <div className="min-h-[100px] flex items-center justify-center">
+                                        <div className="min-h-[120px] flex flex-col items-center justify-center">
                                           {isListening ? (
-                                            <div className="bg-white p-6 rounded-3xl border-2 border-indigo-500 shadow-2xl relative overflow-hidden w-full max-w-lg">
-                                              <div className="absolute inset-0 bg-indigo-500/5 animate-pulse" />
-                                              <p className="text-xl font-bold text-gray-900 leading-relaxed italic z-10">"{chatInput || 'Listening...'}"</p>
+                                            <div className="flex flex-col items-center space-y-4">
+                                              <div className="flex gap-1 items-center h-8">
+                                                {[...Array(5)].map((_, i) => (
+                                                  <motion.div 
+                                                    key={i}
+                                                    animate={{ height: [10, 30, 10] }}
+                                                    transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
+                                                    className="w-1.5 bg-indigo-500 rounded-full"
+                                                  />
+                                                ))}
+                                              </div>
+                                              <p className="text-indigo-600 font-black italic animate-pulse">EngMaster đang lắng nghe bạn...</p>
                                             </div>
                                           ) : (
-                                            <p className="text-sm font-medium text-gray-400">
-                                              {isChallengeLoading ? 'AI đang phân tích...' : 'Bấm nút to để bắt đầu trả lời'}
-                                            </p>
+                                            <div className="w-full">
+                                              {isChallengeLoading ? (
+                                                <div className="space-y-4 flex flex-col items-center">
+                                                  <div className="relative w-12 h-12">
+                                                    <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
+                                                    <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
+                                                  </div>
+                                                  <p className="text-sm font-bold text-gray-900">Expert AI đang chấm điểm...</p>
+                                                </div>
+                                              ) : (
+                                                !currentQuestionTranscript && <p className="text-sm font-medium text-gray-400">Bấm nút để bắt đầu lượt nói</p>
+                                              )}
+                                            </div>
                                           )}
                                         </div>
 
-                                        {currentQuestionTranscript && !isListening && !isChallengeLoading && (
-                                          <div className="space-y-6 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        {currentQuestionTranscript && !isListening && !isChallengeLoading && !currentQuestionFeedback && (
+                                          <div className="space-y-4 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
                                             <div className="bg-green-50 p-6 rounded-3xl border-2 border-green-200 shadow-sm text-left">
                                                <div className="flex justify-between items-center mb-3">
                                                   <span className="text-[10px] bg-green-200 text-green-700 px-2 py-0.5 rounded-full font-black uppercase">Captured Transcript</span>
