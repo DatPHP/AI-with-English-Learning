@@ -105,42 +105,32 @@ app.post("/api/auth/reset-password", async (req, res) => {
   }
 });
 
-// Simple memory cache for TTS
-const ttsCache = new Map<string, Buffer>();
-
 app.post("/api/tts", async (req, res) => {
   const { text, voiceId } = req.body;
   if (!text) return res.status(400).json({ error: "Text is required" });
 
-  const cacheKey = `${voiceId || "default"}_${text}`;
-  
-  if (ttsCache.has(cacheKey)) {
-    res.setHeader("Content-Type", "audio/mpeg");
-    return res.send(ttsCache.get(cacheKey));
-  }
-
   try {
     const audioStream = await elevenLabsService.textToSpeech(text, voiceId);
+    
+    // Set headers for audio streaming
     res.setHeader("Content-Type", "audio/mpeg");
     
+    // Pipe the stream to the response
+    // ElevenLabs SDK returns a stream-like object that can be converted to buffer if needed
+    // or just written direct if it's a Buffer/Readable
     if (audioStream instanceof Buffer) {
-      ttsCache.set(cacheKey, audioStream);
       res.send(audioStream);
     } else {
-      // Pipe immediately to client
-      (audioStream as any).pipe(res);
-
-      // Collect chunks for cache
-      const chunks: Buffer[] = [];
-      (audioStream as any).on("data", (chunk: Buffer) => chunks.push(chunk));
-      (audioStream as any).on("end", () => {
-        ttsCache.set(cacheKey, Buffer.concat(chunks));
-      });
+      // Handle as stream
+      const chunks = [];
+      for await (const chunk of audioStream as any) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      res.send(buffer);
     }
   } catch (error: any) {
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
-    }
+    res.status(500).json({ error: error.message });
   }
 });
 
