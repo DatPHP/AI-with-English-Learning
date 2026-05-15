@@ -91,3 +91,18 @@ export interface ShadowingProgress {
   completedSentences: string[];
   lastAccessed: number;
 }
+
+export interface WorkshopSession {
+  id: string;
+  title: string;
+  description: string;
+  driveId: string;
+  category: string;
+  keyPoints: string[];
+}
+
+export interface UserWorkshopProgress {
+  userId: string;
+  completedSessionIds: string[];
+  lastSessionId: string;
+}

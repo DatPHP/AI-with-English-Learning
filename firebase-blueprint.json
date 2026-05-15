@@ -55,6 +55,17 @@
         "attempts": { "type": "array", "items": { "type": "object" } }
       },
       "required": ["userId", "startDate", "targetEndDate"]
+    },
+    "workshopProgress": {
+      "title": "Workshop Progress",
+      "description": "Progress tracking for pronunciation workshop sessions.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "completedSessionIds": { "type": "array", "items": { "type": "string" } },
+        "lastSessionId": { "type": "string" }
+      },
+      "required": ["userId", "completedSessionIds"]
     }
   },
   "firestore": {
@@ -73,6 +84,10 @@
     "/speakingChallenges/{userId}": {
       "schema": "speakingChallenges",
       "description": "30-day speaking challenge progress."
+    },
+    "/workshopProgress/{userId}": {
+      "schema": "workshopProgress",
+      "description": "Pronunciation workshop progress."
     }
   }
 }
