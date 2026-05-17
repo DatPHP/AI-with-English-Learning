@@ -135,21 +135,36 @@ export const PronunciationWorkshop: React.FC<WorkshopProps> = ({ progress, user 
   };
 
   const toggleComplete = async (sessionId: string) => {
-    if (!user) return;
-    const newCompleted = completedSessions.includes(sessionId)
-      ? completedSessions.filter(id => id !== sessionId)
-      : [...completedSessions, sessionId];
+    if (!user) {
+      toast.error("Vui lòng đăng nhập để lưu tiến độ.");
+      return;
+    }
+    
+    // Ensure we are working with the latest array from props
+    const currentCompleted = progress?.completedSessionIds || [];
+    const isNowCompleted = !currentCompleted.includes(sessionId);
+    
+    const newCompleted = isNowCompleted
+      ? [...currentCompleted, sessionId]
+      : currentCompleted.filter(id => id !== sessionId);
     
     try {
       await setDoc(doc(db, 'workshopProgress', user.uid), {
         userId: user.uid,
         completedSessionIds: newCompleted,
-        lastSessionId: sessionId
+        lastSessionId: sessionId,
+        updatedAt: new Date().toISOString()
       }, { merge: true });
-      toast.success(completedSessions.includes(sessionId) ? "Đã bỏ đánh dấu hoàn thành" : "Tuyệt vời! Đã hoàn thành bài học.");
+      
+      if (isNowCompleted) {
+        toast.success("Tuyệt vời! Bạn đã hoàn thành bài học này. 🔥");
+        // Audio celebration or small vibration could go here
+      } else {
+        toast.info("Đã bỏ đánh dấu hoàn thành.");
+      }
     } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `workshopProgress/${user.uid}`);
-      toast.error("Lỗi khi cập nhật tiến độ.");
+      console.error(e);
+      toast.error("Không thể cập nhật tiến độ. Vui lòng kiểm tra kết nối.");
     }
   };
 
@@ -358,13 +373,15 @@ export const PronunciationWorkshop: React.FC<WorkshopProps> = ({ progress, user 
               <h1 className="text-3xl font-black text-gray-900 mb-3">{selectedSession.title}</h1>
               <p className="text-gray-600 leading-relaxed font-medium">{selectedSession.description}</p>
             </div>
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => toggleComplete(selectedSession.id)}
-              className={`shrink-0 flex items-center gap-3 px-6 py-3 rounded-2xl font-black transition-all shadow-lg ${completedSessions.includes(selectedSession.id) ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-green-50 hover:text-green-600'}`}
+              className={`shrink-0 flex items-center gap-3 px-8 py-4 rounded-3xl font-black transition-all shadow-xl ${completedSessions.includes(selectedSession.id) ? 'bg-green-500 text-white shadow-green-200' : 'bg-white text-indigo-600 border-2 border-indigo-100 hover:border-indigo-600'}`}
             >
-              <CheckCircle2 className="w-6 h-6" />
+              <CheckCircle2 className={`w-6 h-6 ${completedSessions.includes(selectedSession.id) ? 'text-white' : 'text-indigo-600'}`} />
               {completedSessions.includes(selectedSession.id) ? 'ĐÃ HOÀN THÀNH' : 'ĐÁNH DẤU XONG'}
-            </button>
+            </motion.button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12">

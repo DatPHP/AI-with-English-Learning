@@ -227,7 +227,8 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatSuggestion, setChatSuggestion] = useState<string | null>(null);
-  const [chatTimer, setChatTimer] = useState<number | null>(null);
+  const [chatPhase, setChatPhase] = useState<'idle' | 'listening' | 'analyzing' | 'waiting' | 'responding'>('idle');
+  const [currentAiResponse, setCurrentAiResponse] = useState<any | null>(null);
   const [suggestionTimeout, setSuggestionTimeout] = useState<any>(null);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = React.useRef<any>(null);
@@ -531,34 +532,63 @@ export default function App() {
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isChatLoading) return;
     
-    // Stop listening if sending message
     if (isListening) stopListening();
 
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', text }];
+    const userMsg: ChatMessage = { role: 'user', text };
+    const newMessages: ChatMessage[] = [...chatMessages, userMsg];
     setChatMessages(newMessages);
     setChatInput('');
     setChatSuggestion(null);
+    setCurrentAiResponse(null);
+    setChatPhase('analyzing');
     if (suggestionTimeout) clearTimeout(suggestionTimeout);
     
-    // Turn limit check (6-12 turns total)
-    if (newMessages.length >= 24) {
+    if (newMessages.length >= 30) {
       toast.info("Buổi hội thoại kết thúc. Hẹn gặp lại bạn vào ngày mai!");
+      setChatPhase('idle');
       return;
     }
 
     setIsChatLoading(true);
     try {
       const vocab = flashcards.slice(0, 10).map(f => f.word);
-      const aiResponse = await getChatResponse(newMessages, vocab);
-      const updatedMessages: ChatMessage[] = [...newMessages, { role: 'model', text: aiResponse }];
-      setChatMessages(updatedMessages);
-      speak(aiResponse);
-      resetSuggestionTimer(updatedMessages);
+      const aiData = await getChatResponse(newMessages, vocab);
+      
+      // Phase: Provide feedback first (Vietnamese)
+      setCurrentAiResponse(aiData);
+      setChatPhase('waiting');
+      
+      // Speak feedback softly in Vietnamese (using voice service if available, else standard)
+      speak(aiData.analysis);
+      
     } catch (e) {
       toast.error("Lỗi hội thoại.");
+      setChatPhase('idle');
     } finally {
       setIsChatLoading(false);
     }
+  };
+
+  const proceedToAiResponse = () => {
+    if (!currentAiResponse) return;
+    
+    setChatPhase('responding');
+    const aiText = currentAiResponse.response;
+    const updatedMessages: ChatMessage[] = [...chatMessages, { role: 'model', text: aiText }];
+    setChatMessages(updatedMessages);
+    
+    // Speak response in English
+    speak(aiText);
+    
+    // Set suggestions
+    if (currentAiResponse.suggestions && currentAiResponse.suggestions.length > 0) {
+      // Just take the first one as a primary suggestion but show all in UI
+      setChatSuggestion(currentAiResponse.suggestions[0]);
+    }
+    
+    resetSuggestionTimer(updatedMessages);
+    setCurrentAiResponse(null);
+    setChatPhase('idle');
   };
 
   const startListening = (onFinal?: (text: string) => void) => {
@@ -1231,7 +1261,7 @@ export default function App() {
                 </div>
 
                 {/* Chat Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50 flex flex-col">
                   {chatMessages.map((msg, idx) => (
                     <motion.div 
                       key={idx}
@@ -1251,23 +1281,76 @@ export default function App() {
                       </div>
                     </motion.div>
                   ))}
-                  {isChatLoading && (
+                  
+                  {isChatLoading && chatPhase === 'analyzing' && (
                     <div className="flex justify-start">
-                      <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-none border border-gray-100">
-                        <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+                      <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-none border border-gray-100 flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
+                        <span className="text-xs text-indigo-600 font-medium italic">EngMaster đang suy nghĩ...</span>
                       </div>
                     </div>
                   )}
+
+                  {/* Feedback Phase */}
+                  {currentAiResponse && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl mx-Auto max-w-[90%]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-white rounded-full text-indigo-600 shrink-0">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider mb-1">Nhận xét từ AI</p>
+                          <p className="text-sm text-indigo-900 font-medium leading-relaxed">{currentAiResponse.analysis}</p>
+                          
+                          {chatPhase === 'waiting' && (
+                            <motion.button 
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              whileHover={{ scale: 1.05, backgroundColor: '#4338ca' }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={proceedToAiResponse}
+                              className="mt-4 flex items-center justify-center gap-3 bg-indigo-600 text-white px-8 py-3 rounded-2xl text-sm font-black shadow-[0_10px_20px_rgba(79,70,229,0.3)] hover:shadow-indigo-200 transition-all w-full md:w-auto"
+                            >
+                              TIẾP TỤC HỘI THOẠI <ArrowRight className="w-4 h-4" />
+                            </motion.button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Suggestions bubbles after responding */}
+                  {chatPhase === 'idle' && !chatSuggestion && chatMessages.length > 1 && chatMessages[chatMessages.length-1].role === 'model' && currentAiResponse?.suggestions && (
+                    <div className="flex flex-wrap gap-2 justify-center py-4">
+                      {currentAiResponse.suggestions.map((suggestion: string, i: number) => (
+                        <motion.button
+                          key={i}
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                          onClick={() => handleSendMessage(suggestion)}
+                          className="bg-white border border-gray-200 text-gray-600 hover:text-indigo-600 hover:border-indigo-300 px-3 py-1.5 rounded-full text-xs transition-all shadow-sm italic"
+                        >
+                          "{suggestion}"
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
+
                   {chatSuggestion && !isChatLoading && (
                     <motion.div 
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className="flex flex-col items-center gap-2 py-4"
                     >
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Gợi ý từ AI:</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">AI gợi ý bạn nên nói:</p>
                       <button 
                         onClick={() => handleSendMessage(chatSuggestion)}
-                        className="bg-white border-2 border-dashed border-indigo-200 text-indigo-600 px-4 py-2 rounded-xl text-xs hover:border-indigo-400 hover:bg-indigo-50 transition-all italic"
+                        className="bg-white border-2 border-dashed border-indigo-200 text-indigo-600 px-4 py-2 rounded-xl text-xs hover:border-indigo-400 hover:bg-indigo-50 transition-all italic shadow-sm"
                       >
                         "{chatSuggestion}"
                       </button>

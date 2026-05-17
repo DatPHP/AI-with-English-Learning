@@ -220,13 +220,16 @@ export async function getChatResponse(messages: { role: 'user' | 'model', text: 
   const model = "gemini-3-flash-preview";
   
   const systemInstruction = `You are a helpful and friendly English conversation partner named EngMaster AI. 
-  Your goal is to help the user practice English by having a natural conversation.
-  The conversation should be themed around these vocabulary words the user has learned: ${vocabulary.join(', ')}.
-  Try to use at least one or two of these words in each of your responses naturally.
-  Keep your responses concise (1-3 sentences) to encourage the user to speak more.
-  Ask open-ended questions related to the vocabulary and the user's life.
-  If the user makes a significant grammatical mistake, gently correct it and explain why, then continue the conversation.
-  Speak English only.`;
+  Your primary goal is to have a structured, turn-based conversation to help users practice English.
+
+  STRUCTURE OF YOUR RESPONSE:
+  You must return a JSON object with exactly these fields:
+  1. "analysis": A brief, encouraging feedback in Vietnamese (max 20 words) about the user's latest sentence (praise their vocab use or subtle correction).
+  2. "response": Your natural English response/question to continue the conversation. Use these vocabulary words naturally: ${vocabulary.join(', ')}.
+  3. "suggestions": An array of 3 possible English answers the user could say next. Each suggestion should be a different way to answer (e.g., agreeing, disagreeing, adding more detail).
+
+  TONE: Friendly, supportive, like a real human friend.
+  CONSTRAINTS: Speak English in "response" and "suggestions". Speak Vietnamese ONLY in "analysis".`;
 
   const response = await ai.models.generateContent({
     model,
@@ -235,11 +238,32 @@ export async function getChatResponse(messages: { role: 'user' | 'model', text: 
       parts: [{ text: m.text }]
     })),
     config: {
-      systemInstruction
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          analysis: { type: Type.STRING },
+          response: { type: Type.STRING },
+          suggestions: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        },
+        required: ["analysis", "response", "suggestions"]
+      }
     }
   });
 
-  return response.text || "I'm sorry, I couldn't understand that. Can we try again?";
+  try {
+    return JSON.parse(response.text || "{}");
+  } catch (e) {
+    return {
+      analysis: "Tôi đang lắng nghe bạn đây!",
+      response: "That's interesting! Could you tell me more about it?",
+      suggestions: ["Yes, of course.", "I'm not sure.", "Let me think about it."]
+    };
+  }
 }
 
 export async function getChatSuggestion(messages: { role: 'user' | 'model', text: string }[], vocabulary: string[]) {

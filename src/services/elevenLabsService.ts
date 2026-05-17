@@ -25,13 +25,20 @@ export class ElevenLabsService {
     }
 
     try {
+      // Improved settings for more human-like variations
       const audio = await this.client.generate({
         voice: voiceId,
         text: text,
         model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8,
+          style: 0.5,
+          use_speaker_boost: true
+        }
       });
 
-      return audio; // This is typically a ReadableStream
+      return audio;
     } catch (error: any) {
       console.error("ElevenLabs API Error:", error.message);
       throw error;
