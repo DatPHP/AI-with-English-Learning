@@ -229,7 +229,7 @@ export const PronunciationWorkshop: React.FC<WorkshopProps> = ({ progress, user 
         "Pronunciation Workshop Practice",
         `Focus on session: ${selectedSession.title}. Target sound/points: ${selectedSession.keyPoints.join(', ')}`,
         chatInput,
-        selectedSession.keyPoints
+        selectedSession.keyPoints.map(kp => ({ word: kp, meaning: "Pronunciation key focus" }))
       );
       setFeedback(result);
     } catch (e) {

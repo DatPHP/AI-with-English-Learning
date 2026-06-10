@@ -304,11 +304,15 @@ export default function App() {
     const chalQuery = doc(db, 'speakingChallenges', user.uid);
     const unsubChal = onSnapshot(chalQuery, (snap) => {
       if (snap.exists()) setChallengeProgress(snap.data() as SpeakingChallengeProgress);
+    }, (e) => {
+      console.warn("Failed to subscribe to speakingChallenges:", e);
     });
 
     const workshopQuery = doc(db, 'workshopProgress', user.uid);
     const unsubWorkshop = onSnapshot(workshopQuery, (snap) => {
       if (snap.exists()) setWorkshopProgress(snap.data() as UserWorkshopProgress);
+    }, (e) => {
+      console.warn("Failed to subscribe to workshopProgress:", e);
     });
 
     return () => { unsubV(); unsubG(); unsubChal(); unsubWorkshop(); };
