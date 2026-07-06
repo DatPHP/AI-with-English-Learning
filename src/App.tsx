@@ -33,6 +33,7 @@ import {
   LogOut, 
   User as UserIcon, 
   Brain, 
+  Cpu,
   FileText, 
   ChevronRight, 
   ChevronLeft, 
@@ -74,6 +75,7 @@ import { playHighQualityAudio } from './services/voiceService';
 import { SpeakButton } from './components/SpeakButton';
 import { ShadowingModule } from './components/ShadowingModule';
 import { PronunciationWorkshop } from './components/PronunciationWorkshop';
+import { AIArchitectureDashboard } from './components/AIArchitectureDashboard';
 
 // Tiptap Imports
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -202,7 +204,7 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [grammarBlogs, setGrammarBlogs] = useState<GrammarBlog[]>([]);
-  const [activeTab, setActiveTab] = useState<'input' | 'vocabulary' | 'grammar' | 'chat' | 'challenge' | 'shadowing' | 'workshop'>('input');
+  const [activeTab, setActiveTab] = useState<'input' | 'vocabulary' | 'grammar' | 'chat' | 'challenge' | 'shadowing' | 'workshop' | 'architecture'>('input');
   const [selectedBlog, setSelectedBlog] = useState<GrammarBlog | null>(null);
 
   // Workshop State
@@ -1031,6 +1033,13 @@ export default function App() {
           >
             <MessageCircle className="w-5 h-5" />
             Hội thoại AI
+          </button>
+          <button 
+            onClick={() => setActiveTab('architecture')}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${activeTab === 'architecture' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Cpu className="w-5 h-5" />
+            Kiến trúc & QA AI
           </button>
         </nav>
 
@@ -2030,6 +2039,17 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
               >
                 <PronunciationWorkshop progress={workshopProgress} user={user} />
+              </motion.div>
+            )}
+
+            {activeTab === 'architecture' && (
+              <motion.div
+                key="architecture"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <AIArchitectureDashboard />
               </motion.div>
             )}
           </AnimatePresence>
